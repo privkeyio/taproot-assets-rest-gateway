@@ -2,12 +2,12 @@
 name = "taproot-assets-rest-gateway"
 version = "0.0.1"
 edition = "2021"
-description = "REST API proxy and Rust SDK for Lightning Labs' Taproot Assets"
+description = "REST API proxy for Lightning Labs' Taproot Assets"
 readme = "README.md"
 repository = "https://github.com/privkeyio/taproot-assets-rest-gateway"
 license = "MIT"
 keywords = ["taproot", "assets", "lightning", "bitcoin", "proxy"]
-categories = ["api-bindings", "cryptography::cryptocurrencies", "web-programming"]
+categories = ["bitcoin", "lightning", "taproot", "rust", "api-bindings", "cryptography::cryptocurrencies", "web-programming"]
 exclude = [
     ".github/",
     "tests/",
