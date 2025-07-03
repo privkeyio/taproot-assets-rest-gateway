@@ -1,0 +1,117 @@
+# Environment files
+.env
+.env.local
+.env.*
+!.env.example
+!.env.local.example
+
+# Security - Never commit these
+*.macaroon
+*.macaroon.hex
+*.cert
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Rust
+target/
+**/*.rs.bk
+*.pdb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*~
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+*.lcov
+.nyc_output/
+test-results/
+junit.xml
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+.cache/
+
+# Backup files
+*.backup
+*.bak
+*.orig
+*.rej
+
+# Local development
+.polar/
+dev-data/
+local-config/
+scratch/
+
+# Build artifacts
+dist/
+build/
+out/
+
+# Documentation
+site/
+_site/
+.jekyll-cache/
+
+# Python (for any scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+ENV/
+
+# Node (if any JS tools used)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Misc
+.history/
+.vscode-test/
+*.pid
+*.seed
+*.pid.lock
