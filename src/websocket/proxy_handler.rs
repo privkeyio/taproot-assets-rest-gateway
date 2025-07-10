@@ -1,10 +1,11 @@
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_ws::{Message as WsMessage, MessageStream, Session};
 use futures_util::{SinkExt, StreamExt};
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 use tokio::time::{timeout, Duration};
 use tokio_tungstenite::tungstenite::Message as TungsteniteMessage;
@@ -17,6 +18,218 @@ use crate::error::AppError;
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(300); // 5 minutes
 const MESSAGE_TIMEOUT: Duration = Duration::from_secs(30); // 30 seconds for individual messages
 const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024; // 10MB
+const CORRELATION_TIMEOUT: Duration = Duration::from_secs(60); // 1 minute for correlation timeout
+const CORRELATION_CLEANUP_INTERVAL: Duration = Duration::from_secs(30); // 30 seconds cleanup interval
+
+/// Represents a pending request awaiting correlation with its response
+#[derive(Debug, Clone)]
+struct PendingRequest {
+    #[allow(dead_code)]
+    correlation_id: String,
+    original_message: String,
+    sent_at: Instant,
+    #[allow(dead_code)]
+    client_session_id: Uuid,
+}
+
+/// Tracks correlation state for a WebSocket session
+#[derive(Debug)]
+struct CorrelationTracker {
+    pending_requests: HashMap<String, PendingRequest>,
+    next_correlation_id: AtomicU64,
+    session_id: Uuid,
+}
+
+impl CorrelationTracker {
+    fn new(session_id: Uuid) -> Self {
+        Self {
+            pending_requests: HashMap::new(),
+            next_correlation_id: AtomicU64::new(1),
+            session_id,
+        }
+    }
+
+    fn generate_correlation_id(&self) -> String {
+        let id = self.next_correlation_id.fetch_add(1, Ordering::Relaxed);
+        format!(
+            "corr_{}_{}_{}",
+            self.session_id,
+            id,
+            Instant::now().elapsed().as_millis()
+        )
+    }
+
+    fn add_pending_request(&mut self, correlation_id: String, original_message: String) {
+        let request = PendingRequest {
+            correlation_id: correlation_id.clone(),
+            original_message,
+            sent_at: Instant::now(),
+            client_session_id: self.session_id,
+        };
+        debug!(
+            "Added pending request with correlation ID: {}",
+            correlation_id
+        );
+        self.pending_requests.insert(correlation_id, request);
+    }
+
+    fn remove_pending_request(&mut self, correlation_id: &str) -> Option<PendingRequest> {
+        let request = self.pending_requests.remove(correlation_id);
+        if request.is_some() {
+            debug!("Matched response with correlation ID: {}", correlation_id);
+        }
+        request
+    }
+
+    fn cleanup_expired_requests(&mut self) -> Vec<PendingRequest> {
+        let now = Instant::now();
+        let mut expired = Vec::new();
+
+        self.pending_requests.retain(|correlation_id, request| {
+            if now.duration_since(request.sent_at) > CORRELATION_TIMEOUT {
+                warn!("Correlation timeout for request: {}", correlation_id);
+                expired.push(request.clone());
+                false
+            } else {
+                true
+            }
+        });
+
+        expired
+    }
+
+    fn pending_count(&self) -> usize {
+        self.pending_requests.len()
+    }
+}
+
+/// Message processing utilities for correlation tracking
+struct MessageProcessor;
+
+impl MessageProcessor {
+    /// Attempts to inject a correlation ID into a JSON message
+    fn inject_correlation_id(
+        message: &str,
+        correlation_id: &str,
+    ) -> Result<String, serde_json::Error> {
+        // Try to parse as JSON
+        match serde_json::from_str::<Value>(message) {
+            Ok(mut json) => {
+                // Inject correlation ID into the message
+                if let Some(obj) = json.as_object_mut() {
+                    obj.insert("_correlation_id".to_string(), json!(correlation_id));
+                    debug!(
+                        "Injected correlation ID {} into JSON message",
+                        correlation_id
+                    );
+                } else {
+                    // If it's not an object, wrap it
+                    json = json!({
+                        "_correlation_id": correlation_id,
+                        "_original_message": json
+                    });
+                    debug!(
+                        "Wrapped non-object JSON with correlation ID {}",
+                        correlation_id
+                    );
+                }
+                serde_json::to_string(&json)
+            }
+            Err(_) => {
+                // Not valid JSON, try to wrap as text message
+                let wrapped = json!({
+                    "_correlation_id": correlation_id,
+                    "_original_text": message,
+                    "_wrapped": true
+                });
+                serde_json::to_string(&wrapped)
+            }
+        }
+    }
+
+    /// Attempts to extract correlation ID from a message
+    fn extract_correlation_id(message: &str) -> Option<String> {
+        match serde_json::from_str::<Value>(message) {
+            Ok(json) => {
+                if let Some(obj) = json.as_object() {
+                    // Check for correlation ID field
+                    if let Some(corr_id) = obj.get("_correlation_id") {
+                        if let Some(id_str) = corr_id.as_str() {
+                            debug!("Extracted correlation ID {} from response", id_str);
+                            return Some(id_str.to_string());
+                        }
+                    }
+
+                    // Also check common gRPC/API response patterns
+                    if let Some(corr_id) =
+                        obj.get("correlation_id").or_else(|| obj.get("request_id"))
+                    {
+                        if let Some(id_str) = corr_id.as_str() {
+                            debug!("Extracted correlation ID {} from response field", id_str);
+                            return Some(id_str.to_string());
+                        }
+                    }
+                }
+                None
+            }
+            Err(_) => None,
+        }
+    }
+
+    /// Checks if a message appears to be a request (heuristic)
+    fn is_request_message(message: &str) -> bool {
+        match serde_json::from_str::<Value>(message) {
+            Ok(json) => {
+                if let Some(obj) = json.as_object() {
+                    // Common patterns for requests
+                    obj.contains_key("method") ||
+                    obj.contains_key("command") ||
+                    obj.contains_key("action") ||
+                    obj.contains_key("request") ||
+                    // gRPC-style patterns
+                    message.contains("Request") ||
+                    // API endpoint patterns
+                    obj.contains_key("endpoint") ||
+                    obj.contains_key("path")
+                } else {
+                    false
+                }
+            }
+            Err(_) => {
+                // For non-JSON messages, use simple heuristics
+                message.contains("request") || message.contains("cmd") || message.contains("call")
+            }
+        }
+    }
+
+    /// Checks if a message appears to be a response (heuristic)
+    #[allow(dead_code)]
+    fn is_response_message(message: &str) -> bool {
+        match serde_json::from_str::<Value>(message) {
+            Ok(json) => {
+                if let Some(obj) = json.as_object() {
+                    // Common patterns for responses
+                    obj.contains_key("result") ||
+                    obj.contains_key("response") ||
+                    obj.contains_key("data") ||
+                    obj.contains_key("error") ||
+                    obj.contains_key("status") ||
+                    // gRPC-style patterns
+                    message.contains("Response") ||
+                    message.contains("Reply")
+                } else {
+                    false
+                }
+            }
+            Err(_) => {
+                // For non-JSON messages, use simple heuristics
+                message.contains("response")
+                    || message.contains("result")
+                    || message.contains("reply")
+            }
+        }
+    }
+}
 
 /// Handles WebSocket proxy connections between clients and the tapd backend
 pub struct WebSocketProxyHandler {
@@ -34,6 +247,7 @@ struct ProxySession {
     created_at: std::time::Instant,
     last_activity_epoch: Arc<AtomicU64>,
     correlation_required: bool,
+    correlation_tracker: Option<Arc<Mutex<CorrelationTracker>>>,
 }
 
 impl WebSocketProxyHandler {
@@ -82,6 +296,12 @@ impl WebSocketProxyHandler {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
+        let correlation_tracker = if correlation_required {
+            Some(Arc::new(Mutex::new(CorrelationTracker::new(session_id))))
+        } else {
+            None
+        };
+
         let proxy_session = ProxySession {
             id: session_id,
             client_id: client_addr.clone(),
@@ -90,6 +310,7 @@ impl WebSocketProxyHandler {
             created_at: std::time::Instant::now(),
             last_activity_epoch: Arc::new(AtomicU64::new(current_epoch)),
             correlation_required,
+            correlation_tracker,
         };
 
         {
@@ -146,9 +367,15 @@ impl WebSocketProxyHandler {
         let client_sink = Arc::new(Mutex::new(client_session));
         let backend_sink = Arc::new(Mutex::new(backend_sink));
 
-        // TODO: Implement correlation logic for tracking request/response pairs
-        // when correlation_required is true. This would enable features like
-        // request tracing and response matching in complex scenarios.
+        // Get correlation tracker if enabled
+        let correlation_tracker = if _correlation_required {
+            let proxies = self.active_proxies.lock().await;
+            proxies
+                .get(&session_id)
+                .and_then(|p| p.correlation_tracker.clone())
+        } else {
+            None
+        };
 
         // Update activity tracker
         let activity_tracker = {
@@ -164,6 +391,7 @@ impl WebSocketProxyHandler {
             let backend_sink = backend_sink.clone();
             let connection_manager = self.connection_manager.clone();
             let activity_tracker = activity_tracker.clone();
+            let correlation_tracker_clone = correlation_tracker.clone();
 
             actix_web::rt::spawn(async move {
                 let mut client_stream = client_stream;
@@ -186,7 +414,44 @@ impl WebSocketProxyHandler {
                                 break;
                             }
 
-                            let tungstenite_msg = TungsteniteMessage::Text(text.to_string().into());
+                            // Handle correlation tracking if enabled
+                            let final_message = if let Some(ref tracker) = correlation_tracker_clone
+                            {
+                                let text_str = text.to_string();
+
+                                // Check if this is a request message that needs correlation
+                                if MessageProcessor::is_request_message(&text_str) {
+                                    let mut tracker_guard = tracker.lock().await;
+                                    let correlation_id = tracker_guard.generate_correlation_id();
+
+                                    match MessageProcessor::inject_correlation_id(
+                                        &text_str,
+                                        &correlation_id,
+                                    ) {
+                                        Ok(modified_message) => {
+                                            tracker_guard.add_pending_request(
+                                                correlation_id.clone(),
+                                                text_str,
+                                            );
+                                            debug!(
+                                                "Added correlation tracking for request: {}",
+                                                correlation_id
+                                            );
+                                            modified_message
+                                        }
+                                        Err(e) => {
+                                            warn!("Failed to inject correlation ID: {}, sending original", e);
+                                            text_str
+                                        }
+                                    }
+                                } else {
+                                    text_str
+                                }
+                            } else {
+                                text.to_string()
+                            };
+
+                            let tungstenite_msg = TungsteniteMessage::Text(final_message.into());
 
                             // Send to backend
                             let mut sink = backend_sink.lock().await;
@@ -262,6 +527,7 @@ impl WebSocketProxyHandler {
             let client_sink = client_sink.clone();
             let connection_manager = self.connection_manager.clone();
             let activity_tracker = activity_tracker.clone();
+            let correlation_tracker_clone = correlation_tracker.clone();
 
             actix_web::rt::spawn(async move {
                 let mut backend_stream = backend_stream;
@@ -284,7 +550,39 @@ impl WebSocketProxyHandler {
                                         "Forwarding text message from backend: {} bytes",
                                         text.len()
                                     );
-                                    WsMessage::Text(text.to_string().into())
+
+                                    // Handle correlation tracking if enabled
+                                    let final_text =
+                                        if let Some(ref tracker) = correlation_tracker_clone {
+                                            let text_str = text.to_string();
+
+                                            // Check if this is a response with correlation ID
+                                            if let Some(correlation_id) =
+                                                MessageProcessor::extract_correlation_id(&text_str)
+                                            {
+                                                let mut tracker_guard = tracker.lock().await;
+                                                if let Some(original_request) = tracker_guard
+                                                    .remove_pending_request(&correlation_id)
+                                                {
+                                                    info!(
+                                                    "Matched response to request {} (took {:?})",
+                                                    correlation_id,
+                                                    original_request.sent_at.elapsed()
+                                                );
+                                                    // Could add request/response logging here
+                                                    debug!(
+                                                        "Original request: {}",
+                                                        original_request.original_message
+                                                    );
+                                                    debug!("Response: {}", text_str);
+                                                }
+                                            }
+                                            text_str
+                                        } else {
+                                            text.to_string()
+                                        };
+
+                                    WsMessage::Text(final_text.into())
                                 }
                                 TungsteniteMessage::Binary(data) => {
                                     debug!(
@@ -375,6 +673,28 @@ impl WebSocketProxyHandler {
             })
         };
 
+        // Start correlation cleanup task if tracking is enabled
+        let cleanup_task = if let Some(ref tracker) = correlation_tracker {
+            let tracker_clone = tracker.clone();
+            Some(actix_web::rt::spawn(async move {
+                let mut interval = tokio::time::interval(CORRELATION_CLEANUP_INTERVAL);
+                loop {
+                    interval.tick().await;
+                    let mut tracker_guard = tracker_clone.lock().await;
+                    let expired = tracker_guard.cleanup_expired_requests();
+                    if !expired.is_empty() {
+                        warn!("Cleaned up {} expired correlation requests", expired.len());
+                    }
+                    let pending_count = tracker_guard.pending_count();
+                    if pending_count > 0 {
+                        debug!("Pending correlation requests: {}", pending_count);
+                    }
+                }
+            }))
+        } else {
+            None
+        };
+
         // Wait for either direction to complete
         tokio::select! {
             _ = client_to_backend => {
@@ -383,6 +703,11 @@ impl WebSocketProxyHandler {
             _ = backend_to_client => {
                 debug!("Backend to client task completed");
             }
+        }
+
+        // Cancel cleanup task if it was running
+        if let Some(task) = cleanup_task {
+            task.abort();
         }
 
         Ok(())
@@ -549,6 +874,7 @@ mod tests {
             created_at: std::time::Instant::now(),
             last_activity_epoch: Arc::new(AtomicU64::new(current_epoch)),
             correlation_required: false,
+            correlation_tracker: None,
         };
 
         {
@@ -591,6 +917,7 @@ mod tests {
             created_at: old_time,
             last_activity_epoch: Arc::new(AtomicU64::new(old_epoch)),
             correlation_required: false,
+            correlation_tracker: None,
         };
 
         {
@@ -606,5 +933,152 @@ mod tests {
             .await;
 
         assert_eq!(handler.active_session_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_correlation_tracker() {
+        let session_id = Uuid::new_v4();
+        let mut tracker = CorrelationTracker::new(session_id);
+
+        // Test correlation ID generation
+        let id1 = tracker.generate_correlation_id();
+        let id2 = tracker.generate_correlation_id();
+        assert_ne!(id1, id2);
+        assert!(id1.contains(&session_id.to_string()));
+
+        // Test adding and removing pending requests
+        tracker.add_pending_request(id1.clone(), "test message".to_string());
+        assert_eq!(tracker.pending_count(), 1);
+
+        let removed = tracker.remove_pending_request(&id1);
+        assert!(removed.is_some());
+        assert_eq!(removed.unwrap().original_message, "test message");
+        assert_eq!(tracker.pending_count(), 0);
+
+        // Test removing non-existent request
+        let removed = tracker.remove_pending_request("non-existent");
+        assert!(removed.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_message_processor_json_injection() {
+        // Test injecting correlation ID into JSON object
+        let json_message = r#"{"method": "test", "params": {"key": "value"}}"#;
+        let correlation_id = "test-corr-123";
+
+        let result = MessageProcessor::inject_correlation_id(json_message, correlation_id);
+        assert!(result.is_ok());
+
+        let modified = result.unwrap();
+        assert!(modified.contains("_correlation_id"));
+        assert!(modified.contains(correlation_id));
+
+        // Test extracting correlation ID
+        let extracted = MessageProcessor::extract_correlation_id(&modified);
+        assert_eq!(extracted, Some(correlation_id.to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_message_processor_non_json() {
+        // Test with non-JSON message
+        let text_message = "This is not JSON";
+        let correlation_id = "test-corr-456";
+
+        let result = MessageProcessor::inject_correlation_id(text_message, correlation_id);
+        assert!(result.is_ok());
+
+        let modified = result.unwrap();
+        assert!(modified.contains("_correlation_id"));
+        assert!(modified.contains(correlation_id));
+        assert!(modified.contains("_original_text"));
+    }
+
+    #[tokio::test]
+    async fn test_message_type_detection() {
+        // Test request detection
+        let request_json = r#"{"method": "get_info", "params": {}}"#;
+        assert!(MessageProcessor::is_request_message(request_json));
+
+        let request_text = "send request to server";
+        assert!(MessageProcessor::is_request_message(request_text));
+
+        // Test response detection
+        let response_json = r#"{"result": {"status": "ok"}, "error": null}"#;
+        assert!(MessageProcessor::is_response_message(response_json));
+
+        let response_text = "response from server";
+        assert!(MessageProcessor::is_response_message(response_text));
+
+        // Test non-matching message
+        let other_message = r#"{"notification": "update"}"#;
+        assert!(!MessageProcessor::is_request_message(other_message));
+        assert!(!MessageProcessor::is_response_message(other_message));
+    }
+
+    #[tokio::test]
+    async fn test_correlation_timeout_cleanup() {
+        let session_id = Uuid::new_v4();
+        let mut tracker = CorrelationTracker::new(session_id);
+
+        // Add a request that should be expired
+        let correlation_id = tracker.generate_correlation_id();
+        tracker.add_pending_request(correlation_id.clone(), "test message".to_string());
+
+        // Manually set the sent_at time to be in the past
+        if let Some(request) = tracker.pending_requests.get_mut(&correlation_id) {
+            request.sent_at = Instant::now() - Duration::from_secs(120); // 2 minutes ago
+        }
+
+        assert_eq!(tracker.pending_count(), 1);
+
+        // Run cleanup
+        let expired = tracker.cleanup_expired_requests();
+        assert_eq!(expired.len(), 1);
+        assert_eq!(tracker.pending_count(), 0);
+        assert_eq!(expired[0].correlation_id, correlation_id);
+    }
+
+    #[tokio::test]
+    async fn test_proxy_session_with_correlation() {
+        let manager = Arc::new(WebSocketConnectionManager::new(
+            BaseUrl("ws://localhost:8290".to_string()),
+            MacaroonHex("test_macaroon".to_string()),
+            false,
+        ));
+
+        let _handler = WebSocketProxyHandler::new(manager);
+
+        // Test session with correlation enabled
+        let session_id = Uuid::new_v4();
+        let backend_conn_id = Uuid::new_v4();
+        let current_epoch = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let correlation_tracker = Some(Arc::new(Mutex::new(CorrelationTracker::new(session_id))));
+
+        let session = ProxySession {
+            id: session_id,
+            client_id: "test_client".to_string(),
+            backend_endpoint: "/test".to_string(),
+            backend_conn_id,
+            created_at: std::time::Instant::now(),
+            last_activity_epoch: Arc::new(AtomicU64::new(current_epoch)),
+            correlation_required: true,
+            correlation_tracker,
+        };
+
+        // Verify correlation tracker is present
+        assert!(session.correlation_tracker.is_some());
+        assert_eq!(session.correlation_required, true);
+
+        // Test correlation tracker functionality
+        if let Some(ref tracker) = session.correlation_tracker {
+            let mut tracker_guard = tracker.lock().await;
+            let corr_id = tracker_guard.generate_correlation_id();
+            tracker_guard.add_pending_request(corr_id.clone(), "test".to_string());
+            assert_eq!(tracker_guard.pending_count(), 1);
+        }
     }
 }
