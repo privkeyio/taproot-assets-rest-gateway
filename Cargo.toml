@@ -38,3 +38,6 @@ base64 = "0.22.1"
 serial_test = "3.2.0"
 actix-cors = "0.7.1"
 sysinfo = "0.35.2"
+actix-ws = "0.3"
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+futures-util = "0.3"
