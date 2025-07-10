@@ -260,7 +260,7 @@ RATE_LIMIT_PER_MINUTE=100
 - ✅ Health check endpoints
 
 ### What's Missing
-- ❌ WebSocket support for real-time events
+- 🚧 WebSocket support for real-time events (in progress)
 - ❌ Response caching
 - ❌ Metrics/monitoring endpoints
 - ❌ Load balancing for multiple tapd instances
