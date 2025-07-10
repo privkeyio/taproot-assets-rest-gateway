@@ -1,4 +1,5 @@
 pub mod connection_manager;
+pub mod proxy_handler;
 
 use actix_web::{web, HttpRequest, HttpResponse, Result as ActixResult};
 use actix_ws::{Message, MessageStream, Session};
