@@ -182,7 +182,7 @@ impl WebSocketProxyHandler {
                                 break;
                             }
 
-                            let tungstenite_msg = TungsteniteMessage::Text(text.to_string());
+                            let tungstenite_msg = TungsteniteMessage::Text(text.to_string().into());
 
                             // Send to backend
                             let mut sink = backend_sink.lock().await;
@@ -208,7 +208,7 @@ impl WebSocketProxyHandler {
                                 break;
                             }
 
-                            let tungstenite_msg = TungsteniteMessage::Binary(data.to_vec());
+                            let tungstenite_msg = TungsteniteMessage::Binary(data);
 
                             // Send to backend
                             let mut sink = backend_sink.lock().await;
@@ -230,11 +230,11 @@ impl WebSocketProxyHandler {
                         }
                         Ok(WsMessage::Ping(data)) => {
                             let mut sink = backend_sink.lock().await;
-                            let _ = sink.send(TungsteniteMessage::Ping(data.to_vec())).await;
+                            let _ = sink.send(TungsteniteMessage::Ping(data)).await;
                         }
                         Ok(WsMessage::Pong(data)) => {
                             let mut sink = backend_sink.lock().await;
-                            let _ = sink.send(TungsteniteMessage::Pong(data.to_vec())).await;
+                            let _ = sink.send(TungsteniteMessage::Pong(data)).await;
                         }
                         Ok(_) => {
                             // Other message types
@@ -279,24 +279,24 @@ impl WebSocketProxyHandler {
                                         "Forwarding text message from backend: {} bytes",
                                         text.len()
                                     );
-                                    WsMessage::Text(text.into())
+                                    WsMessage::Text(text.to_string().into())
                                 }
                                 TungsteniteMessage::Binary(data) => {
                                     debug!(
                                         "Forwarding binary message from backend: {} bytes",
                                         data.len()
                                     );
-                                    WsMessage::Binary(data.into())
+                                    WsMessage::Binary(data)
                                 }
                                 TungsteniteMessage::Close(frame) => {
                                     info!("Backend closing connection: {:?}", frame);
                                     WsMessage::Close(frame.map(|f| actix_ws::CloseReason {
                                         code: actix_ws::CloseCode::from(u16::from(f.code)),
-                                        description: Some(f.reason.into_owned()),
+                                        description: Some(f.reason.to_string()),
                                     }))
                                 }
-                                TungsteniteMessage::Ping(data) => WsMessage::Ping(data.into()),
-                                TungsteniteMessage::Pong(data) => WsMessage::Pong(data.into()),
+                                TungsteniteMessage::Ping(data) => WsMessage::Ping(data),
+                                TungsteniteMessage::Pong(data) => WsMessage::Pong(data),
                                 _ => continue,
                             };
 

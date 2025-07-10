@@ -39,6 +39,7 @@ use tokio_tungstenite::{
     WebSocketStream,
 };
 use tracing::{debug, error, info, warn};
+use url::Url;
 use uuid::Uuid;
 
 /// Default interval for health check monitoring (in seconds)
@@ -52,6 +53,12 @@ const MAX_RECONNECT_ATTEMPTS: u32 = 3;
 
 /// Initial reconnection delay (in seconds)
 const INITIAL_RECONNECT_DELAY_SECS: u64 = 1;
+
+/// Maximum reconnection delay (in seconds) - caps exponential backoff
+const MAX_RECONNECT_DELAY_SECS: u64 = 60;
+
+/// Timeout for reconnection health checks (in seconds)
+const RECONNECT_HEALTH_TIMEOUT_SECS: u64 = 60;
 
 type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 type WsSink = futures_util::stream::SplitSink<WsStream, Message>;
@@ -108,13 +115,10 @@ impl WebSocketConnectionManager {
         let url = format!("{ws_url}{endpoint}");
         debug!("Connecting to backend WebSocket: {}", url);
 
-        // Extract host from URL
-        let host = self
-            .backend_url
-            .replace("https://", "")
-            .replace("http://", "")
-            .split('/')
-            .next()
+        // Extract host from URL using proper URL parsing
+        let host = Url::parse(&self.backend_url)
+            .map_err(|e| AppError::WebSocketProxyError(format!("Invalid backend URL: {e}")))?
+            .host_str()
             .unwrap_or("localhost")
             .to_string();
 
@@ -209,26 +213,24 @@ impl WebSocketConnectionManager {
         let now = Instant::now();
         let mut removed = Vec::new();
 
-        connections.retain(|id, conn| {
-            let last_activity = conn
-                .last_activity
-                .try_lock()
-                .ok()
-                .map(|la| *la)
-                .unwrap_or(conn.created_at);
-            let idle_duration = now.duration_since(last_activity);
+        let mut to_remove = Vec::new();
+        for (id, conn) in connections.iter() {
+            let last_activity = conn.last_activity.blocking_lock();
+            let idle_duration = now.duration_since(*last_activity);
 
             if idle_duration.as_secs() > max_idle_secs {
                 warn!(
                     "Removing stale connection {} (idle for {:?})",
                     id, idle_duration
                 );
-                removed.push(*id);
-                false
-            } else {
-                true
+                to_remove.push(*id);
             }
-        });
+        }
+
+        for id in &to_remove {
+            connections.remove(id);
+            removed.push(*id);
+        }
 
         removed
     }
@@ -277,7 +279,8 @@ impl WebSocketConnectionManager {
                         retry_count, delay, e
                     );
                     tokio::time::sleep(delay).await;
-                    delay *= 2; // Exponential backoff
+                    delay = std::cmp::min(delay * 2, Duration::from_secs(MAX_RECONNECT_DELAY_SECS));
+                    // Exponential backoff with cap
                 }
             }
         }
@@ -289,8 +292,11 @@ impl WebSocketConnectionManager {
         let mut results = Vec::new();
 
         for conn_id in connection_ids {
-            // Check if connection is unhealthy (idle for more than 60 seconds)
-            if !self.is_connection_healthy(conn_id, 60).await {
+            // Check if connection is unhealthy (idle for more than the timeout threshold)
+            if !self
+                .is_connection_healthy(conn_id, RECONNECT_HEALTH_TIMEOUT_SECS)
+                .await
+            {
                 let result = match self.reconnect(conn_id).await {
                     Ok(_) => Ok(()),
                     Err(e) => Err(e),
