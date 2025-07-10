@@ -1,13 +1,11 @@
+pub mod connection_manager;
+
 use actix_web::{web, HttpRequest, HttpResponse, Result as ActixResult};
 use actix_ws::{Message, MessageStream, Session};
 use futures_util::StreamExt;
-use tokio_tungstenite::connect_async;
 use tracing::{error, info};
 
-use crate::{
-    error::AppError,
-    types::{BaseUrl, MacaroonHex},
-};
+use crate::types::{BaseUrl, MacaroonHex};
 
 pub async fn websocket_handler(
     req: HttpRequest,
@@ -35,7 +33,7 @@ async fn handle_websocket_connection(mut session: Session, mut msg_stream: Messa
                 info!("Received WebSocket message: {}", text);
 
                 // Echo the message back for now
-                if let Err(e) = session.text(format!("Echo: {}", text)).await {
+                if let Err(e) = session.text(format!("Echo: {text}")).await {
                     error!("Failed to send WebSocket message: {}", e);
                     break;
                 }
@@ -55,34 +53,6 @@ async fn handle_websocket_connection(mut session: Session, mut msg_stream: Messa
                 error!("WebSocket message error: {}", e);
                 break;
             }
-        }
-    }
-}
-
-async fn connect_to_tapd_websocket(base_url: &str, _macaroon: &str) -> Result<(), AppError> {
-    // TODO: Implement connection to tapd WebSocket endpoint
-    // This will be implemented in future tickets
-
-    let ws_url = base_url
-        .replace("https://", "wss://")
-        .replace("http://", "ws://");
-    let ws_url = format!("{}/v1/taproot-assets/subscribe", ws_url);
-
-    info!("Connecting to tapd WebSocket: {}", ws_url);
-
-    // Placeholder for WebSocket connection logic
-    match connect_async(&ws_url).await {
-        Ok((_ws_stream, _)) => {
-            info!("Successfully connected to tapd WebSocket");
-            // TODO: Handle the WebSocket stream
-            Ok(())
-        }
-        Err(e) => {
-            error!("Failed to connect to tapd WebSocket: {}", e);
-            Err(AppError::WebSocketError(format!(
-                "Connection failed: {}",
-                e
-            )))
         }
     }
 }

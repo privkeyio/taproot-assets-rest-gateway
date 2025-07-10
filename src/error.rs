@@ -17,8 +17,10 @@ pub enum AppError {
     #[error("Validation error: {0}")]
     ValidationError(String),
     #[error("WebSocket error: {0}")]
+    #[allow(dead_code)]
     WebSocketError(String),
     #[error("WebSocket proxy error: {0}")]
+    #[allow(dead_code)]
     WebSocketProxyError(String),
 }
 
@@ -26,8 +28,6 @@ impl AppError {
     pub fn status_code(&self) -> StatusCode {
         match self {
             AppError::ValidationError(_) => StatusCode::BAD_REQUEST,
-            AppError::WebSocketError(_) => StatusCode::BAD_REQUEST,
-            AppError::WebSocketProxyError(_) => StatusCode::BAD_GATEWAY,
             AppError::RequestError(e) => {
                 if e.is_timeout() {
                     StatusCode::GATEWAY_TIMEOUT
