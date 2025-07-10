@@ -51,12 +51,11 @@ impl CorrelationTracker {
 
     fn generate_correlation_id(&self) -> String {
         let id = self.next_correlation_id.fetch_add(1, Ordering::Relaxed);
-        format!(
-            "corr_{}_{}_{}",
-            self.session_id,
-            id,
-            Instant::now().elapsed().as_millis()
-        )
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        format!("corr_{}_{}_{}", self.session_id, id, timestamp)
     }
 
     fn add_pending_request(&mut self, correlation_id: String, original_message: String) {
@@ -459,6 +458,8 @@ impl WebSocketProxyHandler {
                                 timeout(MESSAGE_TIMEOUT, sink.send(tungstenite_msg)).await
                             {
                                 error!("Failed to send message to backend: {:?}", e);
+                                // Close backend connection on send failure
+                                let _ = sink.close().await;
                                 break;
                             }
 
@@ -485,6 +486,8 @@ impl WebSocketProxyHandler {
                                 timeout(MESSAGE_TIMEOUT, sink.send(tungstenite_msg)).await
                             {
                                 error!("Failed to send message to backend: {:?}", e);
+                                // Close backend connection on send failure
+                                let _ = sink.close().await;
                                 break;
                             }
 
@@ -699,9 +702,15 @@ impl WebSocketProxyHandler {
         tokio::select! {
             _ = client_to_backend => {
                 debug!("Client to backend task completed");
+                // Ensure backend connection is closed on task completion
+                let mut backend = backend_sink.lock().await;
+                let _ = backend.close().await;
             }
             _ = backend_to_client => {
                 debug!("Backend to client task completed");
+                // Ensure backend connection is closed on task completion
+                let mut backend = backend_sink.lock().await;
+                let _ = backend.close().await;
             }
         }
 

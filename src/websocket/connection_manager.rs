@@ -321,9 +321,9 @@ impl WebSocketConnectionManager {
     pub async fn mark_connection_active(&self, connection_id: Uuid) -> Result<(), AppError> {
         let connections = self.connections.lock().await;
 
-        if connections.contains_key(&connection_id) {
-            drop(connections);
-            self.update_activity(connection_id).await;
+        if let Some(connection) = connections.get(&connection_id) {
+            let mut last_activity = connection.last_activity.lock().await;
+            *last_activity = Instant::now();
             Ok(())
         } else {
             Err(AppError::WebSocketError("Connection not found".to_string()))
