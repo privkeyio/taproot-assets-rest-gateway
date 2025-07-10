@@ -215,7 +215,7 @@ impl WebSocketConnectionManager {
 
         let mut to_remove = Vec::new();
         for (id, conn) in connections.iter() {
-            let last_activity = conn.last_activity.blocking_lock();
+            let last_activity = conn.last_activity.lock().await;
             let idle_duration = now.duration_since(*last_activity);
 
             if idle_duration.as_secs() > max_idle_secs {

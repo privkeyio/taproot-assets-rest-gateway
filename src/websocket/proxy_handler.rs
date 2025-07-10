@@ -2,8 +2,9 @@ use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_ws::{Message as WsMessage, MessageStream, Session};
 use futures_util::{SinkExt, StreamExt};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 use tokio::time::{timeout, Duration};
 use tokio_tungstenite::tungstenite::Message as TungsteniteMessage;
@@ -29,8 +30,9 @@ struct ProxySession {
     id: Uuid,
     client_id: String,
     backend_endpoint: String,
+    backend_conn_id: Uuid,
     created_at: std::time::Instant,
-    last_activity: Arc<Mutex<std::time::Instant>>,
+    last_activity_epoch: Arc<AtomicU64>,
     correlation_required: bool,
 }
 
@@ -76,12 +78,17 @@ impl WebSocketProxyHandler {
             })?;
 
         // Store proxy session
+        let current_epoch = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
         let proxy_session = ProxySession {
             id: session_id,
             client_id: client_addr.clone(),
             backend_endpoint: backend_endpoint.to_string(),
+            backend_conn_id,
             created_at: std::time::Instant::now(),
-            last_activity: Arc::new(Mutex::new(std::time::Instant::now())),
+            last_activity_epoch: Arc::new(AtomicU64::new(current_epoch)),
             correlation_required,
         };
 
@@ -134,25 +141,21 @@ impl WebSocketProxyHandler {
             >,
         >,
         backend_conn_id: Uuid,
-        correlation_required: bool,
+        _correlation_required: bool,
     ) -> Result<(), AppError> {
         let client_sink = Arc::new(Mutex::new(client_session));
         let backend_sink = Arc::new(Mutex::new(backend_sink));
 
-        // Create channels for correlation if needed
-        let (_correlation_tx, _correlation_rx) = if correlation_required {
-            let (tx, rx) = mpsc::channel::<(String, TungsteniteMessage)>(100);
-            (Some(tx), Some(rx))
-        } else {
-            (None, None)
-        };
+        // TODO: Implement correlation logic for tracking request/response pairs
+        // when correlation_required is true. This would enable features like
+        // request tracing and response matching in complex scenarios.
 
         // Update activity tracker
         let activity_tracker = {
             let proxies = self.active_proxies.lock().await;
             proxies
                 .get(&session_id)
-                .map(|p| p.last_activity.clone())
+                .map(|p| p.last_activity_epoch.clone())
                 .ok_or_else(|| AppError::WebSocketProxyError("Session not found".to_string()))?
         };
 
@@ -166,11 +169,12 @@ impl WebSocketProxyHandler {
                 let mut client_stream = client_stream;
 
                 while let Ok(Some(msg)) = timeout(CLIENT_TIMEOUT, client_stream.next()).await {
-                    // Update activity
-                    {
-                        let mut last_activity = activity_tracker.lock().await;
-                        *last_activity = std::time::Instant::now();
-                    }
+                    // Update activity atomically
+                    let current_epoch = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                    activity_tracker.store(current_epoch, Ordering::Relaxed);
 
                     match msg {
                         Ok(WsMessage::Text(text)) => {
@@ -236,8 +240,8 @@ impl WebSocketProxyHandler {
                             let mut sink = backend_sink.lock().await;
                             let _ = sink.send(TungsteniteMessage::Pong(data)).await;
                         }
-                        Ok(_) => {
-                            // Other message types
+                        Ok(WsMessage::Continuation(_)) | Ok(WsMessage::Nop) => {
+                            // Continuation and Nop frames are ignored
                         }
                         Err(e) => {
                             error!("WebSocket error from client: {}", e);
@@ -267,11 +271,12 @@ impl WebSocketProxyHandler {
 
                     match msg {
                         Ok(Some(Ok(msg))) => {
-                            // Update activity
-                            {
-                                let mut last_activity = activity_tracker.lock().await;
-                                *last_activity = std::time::Instant::now();
-                            }
+                            // Update activity atomically
+                            let current_epoch = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs();
+                            activity_tracker.store(current_epoch, Ordering::Relaxed);
 
                             let client_msg = match msg {
                                 TungsteniteMessage::Text(text) => {
@@ -416,13 +421,18 @@ impl WebSocketProxyHandler {
         let mut sessions = Vec::new();
 
         for (id, session) in proxies.iter() {
-            let last_activity = session.last_activity.lock().await;
+            let last_activity_epoch = session.last_activity_epoch.load(Ordering::Relaxed);
+            let last_activity = UNIX_EPOCH + Duration::from_secs(last_activity_epoch);
+            let last_activity_instant = std::time::Instant::now()
+                - SystemTime::now()
+                    .duration_since(last_activity)
+                    .unwrap_or_default();
             sessions.push(SessionInfo {
                 id: *id,
                 client_id: session.client_id.clone(),
                 backend_endpoint: session.backend_endpoint.clone(),
                 created_at: session.created_at,
-                last_activity: *last_activity,
+                last_activity: last_activity_instant,
                 correlation_required: session.correlation_required,
             });
         }
@@ -432,14 +442,19 @@ impl WebSocketProxyHandler {
 
     /// Cleans up stale sessions
     pub async fn cleanup_stale_sessions(&self, max_idle: Duration) {
-        let now = std::time::Instant::now();
+        let current_epoch = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
         let mut stale_sessions = Vec::new();
 
         {
             let proxies = self.active_proxies.lock().await;
             for (id, session) in proxies.iter() {
-                let last_activity = session.last_activity.lock().await;
-                if now.duration_since(*last_activity) > max_idle {
+                let last_activity_epoch = session.last_activity_epoch.load(Ordering::Relaxed);
+                let idle_duration =
+                    Duration::from_secs(current_epoch.saturating_sub(last_activity_epoch));
+                if idle_duration > max_idle {
                     stale_sessions.push(*id);
                 }
             }
@@ -447,10 +462,25 @@ impl WebSocketProxyHandler {
 
         for session_id in stale_sessions {
             warn!("Cleaning up stale session: {}", session_id);
-            // Note: In a real implementation, we'd need to track backend_conn_id
-            // For now, we just remove from active proxies
-            let mut proxies = self.active_proxies.lock().await;
-            proxies.remove(&session_id);
+
+            // Get backend_conn_id before removing the session
+            let backend_conn_id = {
+                let proxies = self.active_proxies.lock().await;
+                proxies
+                    .get(&session_id)
+                    .map(|session| session.backend_conn_id)
+            };
+
+            // Remove from active proxies
+            {
+                let mut proxies = self.active_proxies.lock().await;
+                proxies.remove(&session_id);
+            }
+
+            // Clean up backend connection if found
+            if let Some(conn_id) = backend_conn_id {
+                self.connection_manager.remove_connection(conn_id).await;
+            }
         }
     }
 }
@@ -506,12 +536,18 @@ mod tests {
 
         // Add a mock session
         let session_id = Uuid::new_v4();
+        let backend_conn_id = Uuid::new_v4();
+        let current_epoch = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
         let session = ProxySession {
             id: session_id,
             client_id: "test_client".to_string(),
             backend_endpoint: "/test".to_string(),
+            backend_conn_id,
             created_at: std::time::Instant::now(),
-            last_activity: Arc::new(Mutex::new(std::time::Instant::now())),
+            last_activity_epoch: Arc::new(AtomicU64::new(current_epoch)),
             correlation_required: false,
         };
 
@@ -540,13 +576,20 @@ mod tests {
 
         // Add a stale session
         let session_id = Uuid::new_v4();
+        let backend_conn_id = Uuid::new_v4();
         let old_time = std::time::Instant::now() - Duration::from_secs(3600); // 1 hour ago
+        let old_epoch = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            - 3600; // 1 hour ago in epoch seconds
         let session = ProxySession {
             id: session_id,
             client_id: "stale_client".to_string(),
             backend_endpoint: "/test".to_string(),
+            backend_conn_id,
             created_at: old_time,
-            last_activity: Arc::new(Mutex::new(old_time)),
+            last_activity_epoch: Arc::new(AtomicU64::new(old_epoch)),
             correlation_required: false,
         };
 
