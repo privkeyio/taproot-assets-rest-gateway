@@ -16,6 +16,12 @@ pub enum AppError {
     EnvVarError(#[from] std::env::VarError),
     #[error("Validation error: {0}")]
     ValidationError(String),
+    #[error("WebSocket error: {0}")]
+    #[allow(dead_code)]
+    WebSocketError(String),
+    #[error("WebSocket proxy error: {0}")]
+    #[allow(dead_code)]
+    WebSocketProxyError(String),
 }
 
 impl AppError {
