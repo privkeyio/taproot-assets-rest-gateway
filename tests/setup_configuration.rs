@@ -8,8 +8,8 @@ use taproot_assets_rest_gateway::tests::setup::setup_without_assets;
 
 #[actix_rt::test]
 async fn test_verify_connection_to_taproot_daemon() {
-    // Ensure .env.local is loaded for this test - do this before any other operations
-    dotenv::from_filename(".env.local").ok();
+    // Ensure .env is loaded for this test - do this before any other operations
+    dotenv::from_filename(".env").ok();
 
     // Force reload environment to ensure TLS_VERIFY is properly set
     std::env::set_var("TLS_VERIFY", "false");
@@ -35,8 +35,8 @@ async fn test_verify_connection_to_taproot_daemon() {
 
 #[actix_rt::test]
 async fn test_macaroon_authentication() {
-    // Ensure .env.local is loaded for this test
-    dotenv::from_filename(".env.local").ok();
+    // Ensure .env is loaded for this test
+    dotenv::from_filename(".env").ok();
     std::env::set_var("TLS_VERIFY", "false");
     let (client, base_url, _macaroon_hex) = setup_without_assets().await;
 
@@ -68,11 +68,11 @@ async fn test_macaroon_authentication() {
 
 #[actix_rt::test]
 async fn test_ssl_tls_certificate_handling() {
-    // Ensure .env.local is loaded for this test
-    dotenv::from_filename(".env.local").ok();
+    // Ensure .env is loaded for this test
+    dotenv::from_filename(".env").ok();
     std::env::set_var("TLS_VERIFY", "false");
 
-    // Use the setup() function which properly configures TLS based on .env.local
+    // Use the setup() function which properly configures TLS based on .env
     let (client, base_url, macaroon_hex) = setup_without_assets().await;
 
     // Should connect successfully with the properly configured client
@@ -90,17 +90,17 @@ async fn test_ssl_tls_certificate_handling() {
     // Additionally test that the config is loaded correctly
     let config = Config::load().expect("Failed to load config");
 
-    // Verify TLS_VERIFY is properly loaded from .env.local
+    // Verify TLS_VERIFY is properly loaded from .env
     assert!(
         !config.tls_verify,
-        "TLS_VERIFY should be false as set in .env.local"
+        "TLS_VERIFY should be false as set in .env"
     );
 }
 
 #[actix_rt::test]
 async fn test_health_check_endpoint() {
-    // Ensure .env.local is loaded for this test
-    dotenv::from_filename(".env.local").ok();
+    // Ensure .env is loaded for this test
+    dotenv::from_filename(".env").ok();
     std::env::set_var("TLS_VERIFY", "false");
 
     let (client, base_url, macaroon_hex) = setup_without_assets().await;
@@ -128,8 +128,8 @@ async fn test_health_check_endpoint() {
 
 #[actix_rt::test]
 async fn test_readiness_probe_validates_connectivity() {
-    // Ensure .env.local is loaded for this test
-    dotenv::from_filename(".env.local").ok();
+    // Ensure .env is loaded for this test
+    dotenv::from_filename(".env").ok();
     std::env::set_var("TLS_VERIFY", "false");
 
     let (client, base_url, macaroon_hex) = setup_without_assets().await;
@@ -154,7 +154,7 @@ async fn test_readiness_probe_validates_connectivity() {
 #[actix_rt::test]
 async fn test_configuration_loading() {
     // Test config loading from environment
-    dotenv::from_filename(".env.local").ok();
+    dotenv::from_filename(".env").ok();
     let config = Config::load();
     assert!(config.is_ok());
 
@@ -166,11 +166,11 @@ async fn test_configuration_loading() {
 
 #[actix_rt::test]
 async fn test_polar_network_connectivity() {
-    // Ensure .env.local is loaded for this test
-    dotenv::from_filename(".env.local").ok();
+    // Ensure .env is loaded for this test
+    dotenv::from_filename(".env").ok();
     std::env::set_var("TLS_VERIFY", "false");
 
-    // Use the proper setup function that respects TLS_VERIFY from .env.local
+    // Use the proper setup function that respects TLS_VERIFY from .env
     let (client, base_url, macaroon_hex) = setup_without_assets().await;
 
     // Verify we're connecting to Polar regtest
@@ -189,8 +189,8 @@ async fn test_polar_network_connectivity() {
 
 #[actix_rt::test]
 async fn test_base_url_format() {
-    // Ensure .env.local is loaded for this test
-    dotenv::from_filename(".env.local").ok();
+    // Ensure .env is loaded for this test
+    dotenv::from_filename(".env").ok();
     std::env::set_var("TLS_VERIFY", "false");
 
     let (_client, base_url, _macaroon_hex) = setup_without_assets().await;
@@ -203,8 +203,8 @@ async fn test_base_url_format() {
 
 #[actix_rt::test]
 async fn test_macaroon_hex_encoding() {
-    // Load .env.local first
-    dotenv::from_filename(".env.local").ok();
+    // Load .env first
+    dotenv::from_filename(".env").ok();
 
     let config = Config::load().expect("Failed to load config");
     let macaroon_bytes = fs::read(&config.macaroon_path).expect("Failed to read macaroon");
@@ -221,8 +221,8 @@ async fn test_macaroon_hex_encoding() {
 
 #[actix_rt::test]
 async fn test_concurrent_requests() {
-    // Ensure .env.local is loaded for this test
-    dotenv::from_filename(".env.local").ok();
+    // Ensure .env is loaded for this test
+    dotenv::from_filename(".env").ok();
     std::env::set_var("TLS_VERIFY", "false");
 
     let (client, base_url, macaroon_hex) = setup_without_assets().await;
@@ -253,8 +253,8 @@ async fn test_concurrent_requests() {
 
 #[actix_rt::test]
 async fn test_cors_configuration() {
-    // Load .env.local first
-    dotenv::from_filename(".env.local").ok();
+    // Load .env first
+    dotenv::from_filename(".env").ok();
 
     let config = Config::load().expect("Failed to load config");
 
@@ -273,8 +273,8 @@ async fn test_cors_configuration() {
 
 #[actix_rt::test]
 async fn test_tls_security_configuration() {
-    // Load .env.local first to get the actual TLS_VERIFY value
-    dotenv::from_filename(".env.local").ok();
+    // Load .env first to get the actual TLS_VERIFY value
+    dotenv::from_filename(".env").ok();
 
     // Store the original value
     let original_tls_verify = std::env::var("TLS_VERIFY").ok();
