@@ -1,8 +1,10 @@
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
-use actix_web::{web, HttpResponse};
+use crate::websocket::proxy_handler::WebSocketProxyHandler;
+use actix_web::{web, HttpRequest, HttpResponse, Result as ActixResult};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Duration;
 use tracing::{info, instrument, warn};
 
@@ -198,6 +200,75 @@ pub async fn asset_send_events(
     }
 }
 
+async fn asset_mint_websocket_handler(
+    req: HttpRequest,
+    stream: web::Payload,
+    ws_proxy_handler: web::Data<Arc<WebSocketProxyHandler>>,
+) -> ActixResult<HttpResponse> {
+    info!("Handling WebSocket connection for asset mint events");
+
+    // Extract query parameters and forward them to the backend
+    let query_string = req.query_string();
+    let endpoint = if query_string.is_empty() {
+        "/v1/taproot-assets/events/asset-mint?method=POST".to_string()
+    } else {
+        format!(
+            "/v1/taproot-assets/events/asset-mint?method=POST&{}",
+            query_string
+        )
+    };
+
+    ws_proxy_handler
+        .handle_websocket(req, stream, &endpoint, false)
+        .await
+}
+
+async fn asset_receive_websocket_handler(
+    req: HttpRequest,
+    stream: web::Payload,
+    ws_proxy_handler: web::Data<Arc<WebSocketProxyHandler>>,
+) -> ActixResult<HttpResponse> {
+    info!("Handling WebSocket connection for asset receive events");
+
+    // Extract query parameters and forward them to the backend
+    let query_string = req.query_string();
+    let endpoint = if query_string.is_empty() {
+        "/v1/taproot-assets/events/asset-receive?method=POST".to_string()
+    } else {
+        format!(
+            "/v1/taproot-assets/events/asset-receive?method=POST&{}",
+            query_string
+        )
+    };
+
+    ws_proxy_handler
+        .handle_websocket(req, stream, &endpoint, false)
+        .await
+}
+
+async fn asset_send_websocket_handler(
+    req: HttpRequest,
+    stream: web::Payload,
+    ws_proxy_handler: web::Data<Arc<WebSocketProxyHandler>>,
+) -> ActixResult<HttpResponse> {
+    info!("Handling WebSocket connection for asset send events");
+
+    // Extract query parameters and forward them to the backend
+    let query_string = req.query_string();
+    let endpoint = if query_string.is_empty() {
+        "/v1/taproot-assets/events/asset-send?method=POST".to_string()
+    } else {
+        format!(
+            "/v1/taproot-assets/events/asset-send?method=POST&{}",
+            query_string
+        )
+    };
+
+    ws_proxy_handler
+        .handle_websocket(req, stream, &endpoint, false)
+        .await
+}
+
 async fn set_debug_level_handler(
     client: web::Data<Client>,
     base_url: web::Data<BaseUrl>,
@@ -275,9 +346,19 @@ fn handle_result<T: serde::Serialize>(result: Result<T, AppError>) -> HttpRespon
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(web::resource("/debuglevel").route(web::post().to(set_debug_level_handler)))
-        .service(web::resource("/events/asset-mint").route(web::post().to(asset_mint_handler)))
         .service(
-            web::resource("/events/asset-receive").route(web::post().to(asset_receive_handler)),
+            web::resource("/events/asset-mint")
+                .route(web::post().to(asset_mint_handler))
+                .route(web::get().to(asset_mint_websocket_handler)),
         )
-        .service(web::resource("/events/asset-send").route(web::post().to(asset_send_handler)));
+        .service(
+            web::resource("/events/asset-receive")
+                .route(web::post().to(asset_receive_handler))
+                .route(web::get().to(asset_receive_websocket_handler)),
+        )
+        .service(
+            web::resource("/events/asset-send")
+                .route(web::post().to(asset_send_handler))
+                .route(web::get().to(asset_send_websocket_handler)),
+        );
 }
