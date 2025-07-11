@@ -8,6 +8,7 @@ use tracing::{error, info};
 
 use crate::types::{BaseUrl, MacaroonHex};
 
+#[allow(dead_code)]
 pub async fn websocket_handler(
     req: HttpRequest,
     stream: web::Payload,
@@ -24,6 +25,7 @@ pub async fn websocket_handler(
     Ok(response)
 }
 
+#[allow(dead_code)]
 async fn handle_websocket_connection(mut session: Session, mut msg_stream: MessageStream) {
     // TODO: Implement WebSocket connection to tapd
     // For now, this is a placeholder that handles basic WebSocket messages
