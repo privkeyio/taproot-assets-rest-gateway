@@ -16,6 +16,10 @@ pub enum AppError {
     EnvVarError(#[from] std::env::VarError),
     #[error("Validation error: {0}")]
     ValidationError(String),
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
+    #[error("Serialization error: {0}")]
+    SerializationError(String),
     #[error("WebSocket error: {0}")]
     #[allow(dead_code)]
     WebSocketError(String),
@@ -28,6 +32,10 @@ impl AppError {
     pub fn status_code(&self) -> StatusCode {
         match self {
             AppError::ValidationError(_) => StatusCode::BAD_REQUEST,
+            AppError::InvalidInput(_) => StatusCode::BAD_REQUEST,
+            AppError::SerializationError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::WebSocketError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::WebSocketProxyError(_) => StatusCode::BAD_GATEWAY,
             AppError::RequestError(e) => {
                 if e.is_timeout() {
                     StatusCode::GATEWAY_TIMEOUT
