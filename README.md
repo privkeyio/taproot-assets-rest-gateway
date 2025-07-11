@@ -24,6 +24,32 @@ This gateway acts as a proxy between your web application and `tapd`, handling:
 - **Better error messages** - Meaningful errors instead of raw gRPC codes
 - **Request tracking** - UUID for each request aids debugging
 
+## Why Use This?
+
+If you're building a web app that needs Taproot Assets, you have three options:
+
+1. **Use tapd's gRPC API** - Requires gRPC-web, complex for browsers
+2. **Use tapd's REST API directly** - No CORS support, won't work from browsers  
+3. **Use this gateway** - Works immediately from any web app
+
+## Features
+
+### What Works Now
+- ✅ Complete REST API coverage for tapd
+- ✅ CORS support for web browsers
+- ✅ Automatic macaroon authentication
+- ✅ Request ID tracking
+- ✅ Basic rate limiting
+- ✅ Docker support
+- ✅ Health check endpoints
+
+### What's Missing
+- 🚧 WebSocket support for real-time events (in progress)
+- ❌ Response caching
+- ❌ Metrics/monitoring endpoints
+- ❌ Load balancing for multiple tapd instances
+- ❌ Advanced rate limiting (per endpoint/user)
+
 ## Quick Start
 
 ```bash
@@ -40,13 +66,40 @@ docker-compose up -d
 cargo run --release
 ```
 
-## Why Use This?
+## .env Configuration
 
-If you're building a web app that needs Taproot Assets, you have three options:
+```env
+# Required
+TAPROOT_ASSETS_HOST=127.0.0.1:8289
+TAPD_MACAROON_PATH=/path/to/tapd/admin.macaroon
+LND_MACAROON_PATH=/path/to/lnd/admin.macaroon
 
-1. **Use tapd's gRPC API** - Requires gRPC-web, complex for browsers
-2. **Use tapd's REST API directly** - No CORS support, won't work from browsers  
-3. **Use this gateway** - Works immediately from any web app
+# Security (use true in production)
+TLS_VERIFY=false
+
+# CORS - Add your app's URL
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+
+# Optional
+SERVER_ADDRESS=127.0.0.1:8080
+REQUEST_TIMEOUT_SECS=30
+RATE_LIMIT_PER_MINUTE=100
+```
+
+## Architecture
+
+```
+Web App → REST Gateway → tapd gRPC/REST
+         ↓
+   [CORS Headers]
+   [Macaroon Auth]
+   [Rate Limiting]
+   [Error Handling]
+```
+
+The gateway forwards requests to tapd's REST API (port 8089) while adding the necessary headers and authentication that web browsers require.
+
+For complete API reference, see the [official Taproot Assets API documentation](https://lightning.engineering/api-docs/api/taproot-assets/).
 
 ## Usage Examples
 
@@ -242,30 +295,6 @@ REQUEST_TIMEOUT_SECS=30
 RATE_LIMIT_PER_MINUTE=100
 ```
 
-## Testing Requirements
-- Bitcoin Core with RPC enabled (for integration tests)
-- Set BITCOIN_RPC_USER and BITCOIN_RPC_PASS
-- LND & tapd running
-- Or use Polar for easier setup
-
-## Features
-
-### What Works Now
-- ✅ Complete REST API coverage for tapd
-- ✅ CORS support for web browsers
-- ✅ Automatic macaroon authentication
-- ✅ Request ID tracking
-- ✅ Basic rate limiting
-- ✅ Docker support
-- ✅ Health check endpoints
-
-### What's Missing
-- 🚧 WebSocket support for real-time events (in progress)
-- ❌ Response caching
-- ❌ Metrics/monitoring endpoints
-- ❌ Load balancing for multiple tapd instances
-- ❌ Advanced rate limiting (per endpoint/user)
-
 ## Development Setup
 
 1. **Install Polar** for local Lightning development
@@ -279,18 +308,11 @@ RATE_LIMIT_PER_MINUTE=100
 5. **Configure `.env`** with the paths
 6. **Run tests**: `cargo test`
 
-## Architecture
-
-```
-Web App → REST Gateway → tapd gRPC/REST
-         ↓
-   [CORS Headers]
-   [Macaroon Auth]
-   [Rate Limiting]
-   [Error Handling]
-```
-
-The gateway forwards requests to tapd's REST API (port 8089) while adding the necessary headers and authentication that web browsers require.
+## Testing Requirements
+- Bitcoin Core with RPC enabled (for integration tests)
+- Set BITCOIN_RPC_USER and BITCOIN_RPC_PASS
+- LND & tapd running
+- Or use Polar for easier setup
 
 ## Limitations
 
