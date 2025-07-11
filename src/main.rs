@@ -2,12 +2,16 @@ use crate::{
     config::Config,
     middleware::{RateLimiter, RequestIdMiddleware},
     types::{BaseUrl, MacaroonHex},
+    websocket::{
+        connection_manager::WebSocketConnectionManager, proxy_handler::WebSocketProxyHandler,
+    },
 };
 use actix_cors::Cors;
 use actix_web::middleware::Logger;
 use actix_web::{web, App, HttpServer};
 use reqwest::Client;
 use std::fs;
+use std::sync::Arc;
 use std::time::Duration;
 use tracing_subscriber::{fmt, EnvFilter};
 
@@ -16,6 +20,7 @@ mod config;
 mod error;
 mod middleware;
 mod types;
+mod websocket;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -50,6 +55,17 @@ async fn main() -> std::io::Result<()> {
 
     let client = client_builder.build().expect("Failed to build HTTP client");
 
+    // Create WebSocket infrastructure
+    let ws_base_url = base_url
+        .replace("https://", "wss://")
+        .replace("http://", "ws://");
+    let connection_manager = Arc::new(WebSocketConnectionManager::new(
+        BaseUrl(ws_base_url),
+        MacaroonHex(macaroon_hex.clone()),
+        config.tls_verify,
+    ));
+    let ws_proxy_handler = Arc::new(WebSocketProxyHandler::new(connection_manager));
+
     let server_address = config.server_address.clone();
     let cors_origins = config.cors_origins.clone();
     let rate_limit = config.rate_limit_per_minute;
@@ -69,34 +85,39 @@ async fn main() -> std::io::Result<()> {
     println!("⏱️  Request timeout: {}s", config.request_timeout_secs);
     println!("🚦 Rate limit: {rate_limit} req/min per IP");
 
-    HttpServer::new(move || {
-        // Configure CORS with dynamic origins
-        let mut cors = Cors::default()
-            .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-            .allowed_headers(vec![
-                actix_web::http::header::AUTHORIZATION,
-                actix_web::http::header::ACCEPT,
-                actix_web::http::header::CONTENT_TYPE,
-            ])
-            .supports_credentials()
-            .max_age(3600);
+    HttpServer::new({
+        let ws_proxy_handler = ws_proxy_handler.clone();
+        move || {
+            // Configure CORS with dynamic origins
+            let mut cors = Cors::default()
+                .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+                .allowed_headers(vec![
+                    actix_web::http::header::AUTHORIZATION,
+                    actix_web::http::header::ACCEPT,
+                    actix_web::http::header::CONTENT_TYPE,
+                ])
+                .supports_credentials()
+                .max_age(3600);
 
-        // Add each configured origin
-        for origin in &cors_origins {
-            cors = cors.allowed_origin(origin);
+            // Add each configured origin
+            for origin in &cors_origins {
+                cors = cors.allowed_origin(origin);
+            }
+
+            App::new()
+                .wrap(cors)
+                .wrap(RateLimiter::new(rate_limit))
+                .wrap(RequestIdMiddleware)
+                .wrap(Logger::new(
+                    "%a \"%r\" %s %b \"%{Referer}i\" \"%{User-Agent}i\" %T",
+                ))
+                .app_data(web::Data::new(client.clone()))
+                .app_data(web::Data::new(BaseUrl(base_url.clone())))
+                .app_data(web::Data::new(MacaroonHex(macaroon_hex.clone())))
+                .app_data(web::Data::new(config.clone()))
+                .app_data(web::Data::new(ws_proxy_handler.clone()))
+                .configure(api::routes::configure)
         }
-
-        App::new()
-            .wrap(cors)
-            .wrap(RateLimiter::new(rate_limit))
-            .wrap(RequestIdMiddleware)
-            .wrap(Logger::new(
-                "%a \"%r\" %s %b \"%{Referer}i\" \"%{User-Agent}i\" %T",
-            ))
-            .app_data(web::Data::new(client.clone()))
-            .app_data(web::Data::new(BaseUrl(base_url.clone())))
-            .app_data(web::Data::new(MacaroonHex(macaroon_hex.clone())))
-            .configure(api::routes::configure)
     })
     .bind(&server_address)?
     .shutdown_timeout(30) // 30 second graceful shutdown

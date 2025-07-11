@@ -1,6 +1,6 @@
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse, Result as ActixResult};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -246,6 +246,150 @@ async fn notifications_handler(
     )
 }
 
+async fn rfq_events_ws_handler(
+    req: HttpRequest,
+    stream: web::Payload,
+    base_url: web::Data<BaseUrl>,
+    macaroon_hex: web::Data<MacaroonHex>,
+    client: web::Data<Client>,
+    config: web::Data<crate::config::Config>,
+) -> ActixResult<HttpResponse> {
+    info!("Establishing WebSocket connection for RFQ event notifications");
+
+    let (response, session, mut msg_stream) = actix_ws::handle(&req, stream)?;
+
+    let base_url_clone = base_url.0.clone();
+    let macaroon_clone = macaroon_hex.0.clone();
+    let client_clone = client.get_ref().clone();
+
+    actix_web::rt::spawn(async move {
+        use actix_ws::Message;
+        use futures_util::StreamExt;
+        use std::sync::Arc;
+        use tokio::sync::Mutex;
+        use tokio::time::{interval, Duration};
+
+        let session = Arc::new(Mutex::new(session));
+
+        // Send initial empty request body to start streaming
+        {
+            let mut session_lock = session.lock().await;
+            if let Err(e) = session_lock.text("{}").await {
+                tracing::error!("Failed to send initial message: {}", e);
+                return;
+            }
+        }
+
+        let mut ping_interval = interval(Duration::from_secs(30));
+
+        // Start the polling task
+        let poll_session = session.clone();
+        let poll_client = client_clone.clone();
+        let poll_base_url = base_url_clone.clone();
+        let poll_macaroon = macaroon_clone.clone();
+
+        let poll_interval = config.rfq_poll_interval_secs;
+        let poll_task = actix_web::rt::spawn(async move {
+            poll_rfq_events(
+                &poll_client,
+                &poll_base_url,
+                &poll_macaroon,
+                poll_session,
+                poll_interval,
+            )
+            .await;
+        });
+
+        loop {
+            tokio::select! {
+                // Handle incoming messages from client
+                msg = msg_stream.next() => {
+                    match msg {
+                        Some(Ok(Message::Text(_text))) => {
+                            // For RFQ notifications, we typically just need to maintain the connection
+                            // The streaming is handled by the initial POST request to tapd
+                            tracing::debug!("Received client message for RFQ notifications");
+                        },
+                        Some(Ok(Message::Close(_))) => {
+                            tracing::info!("WebSocket connection closed by client");
+                            break;
+                        },
+                        Some(Ok(Message::Ping(bytes))) => {
+                            let mut session_lock = session.lock().await;
+                            if let Err(e) = session_lock.pong(&bytes).await {
+                                tracing::error!("Failed to send pong: {}", e);
+                                break;
+                            }
+                        },
+                        Some(Err(e)) => {
+                            tracing::error!("WebSocket error: {}", e);
+                            break;
+                        },
+                        None => {
+                            tracing::info!("WebSocket stream ended");
+                            break;
+                        },
+                        _ => {}
+                    }
+                },
+                // Send periodic pings to keep connection alive
+                _ = ping_interval.tick() => {
+                    let mut session_lock = session.lock().await;
+                    if let Err(e) = session_lock.ping(b"ping").await {
+                        tracing::error!("Failed to send ping: {}", e);
+                        break;
+                    }
+                },
+            }
+        }
+
+        // Abort the polling task when connection ends
+        poll_task.abort();
+    });
+
+    Ok(response)
+}
+
+async fn poll_rfq_events(
+    client: &Client,
+    base_url: &str,
+    macaroon_hex: &str,
+    session: std::sync::Arc<tokio::sync::Mutex<actix_ws::Session>>,
+    poll_interval_secs: u64,
+) {
+    use tokio::time::{sleep, Duration};
+
+    loop {
+        match get_notifications(client, base_url, macaroon_hex).await {
+            Ok(events) => {
+                let event_json =
+                    serde_json::to_string(&events).unwrap_or_else(|_| "{}".to_string());
+                let mut session_lock = session.lock().await;
+                if let Err(e) = session_lock.text(event_json).await {
+                    tracing::error!("Failed to send RFQ event: {}", e);
+                    break;
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to fetch RFQ notifications: {}", e);
+
+                let error_msg = serde_json::json!({
+                    "error": e.to_string(),
+                    "type": "rfq_notification_error"
+                });
+                let mut session_lock = session.lock().await;
+                if let Err(e) = session_lock.text(error_msg.to_string()).await {
+                    tracing::error!("Failed to send error message: {}", e);
+                    break;
+                }
+            }
+        }
+
+        // Wait before next poll
+        sleep(Duration::from_secs(poll_interval_secs)).await;
+    }
+}
+
 async fn asset_rates_handler(
     client: web::Data<Client>,
     base_url: web::Data<BaseUrl>,
@@ -336,7 +480,11 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     .service(
         web::resource("/rfq/buyorder/asset-id/{asset_id}").route(web::post().to(buy_order_handler)),
     )
-    .service(web::resource("/rfq/ntfs").route(web::post().to(notifications_handler)))
+    .service(
+        web::resource("/rfq/ntfs")
+            .route(web::get().to(rfq_events_ws_handler))
+            .route(web::post().to(notifications_handler)),
+    )
     .service(web::resource("/rfq/priceoracle/assetrates").route(web::get().to(asset_rates_handler)))
     .service(web::resource("/rfq/quotes/peeraccepted").route(web::get().to(peer_quotes_handler)))
     .service(
