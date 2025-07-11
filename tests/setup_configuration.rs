@@ -273,10 +273,10 @@ async fn test_cors_configuration() {
 
 #[actix_rt::test]
 async fn test_tls_security_configuration() {
-    // Load .env first to get the actual TLS_VERIFY value
+    // Load .env to ensure all required environment variables are available
     dotenv::from_filename(".env").ok();
 
-    // Store the original value
+    // Store the original value before any modifications
     let original_tls_verify = std::env::var("TLS_VERIFY").ok();
 
     // Test with explicit true setting
@@ -293,6 +293,15 @@ async fn test_tls_security_configuration() {
     assert!(
         !config.tls_verify,
         "TLS verification should be disabled when set to false"
+    );
+
+    // Test default behavior (should default to true)
+
+    std::env::remove_var("TLS_VERIFY");
+    let config = Config::load().expect("Failed to load config");
+    assert!(
+        config.tls_verify,
+        "TLS verification should default to true when not set"
     );
 
     // Restore original value
