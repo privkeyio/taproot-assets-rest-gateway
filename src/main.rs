@@ -57,7 +57,7 @@ async fn main() -> std::io::Result<()> {
 
     // Create WebSocket infrastructure
     let ws_base_url = base_url
-        .replace("https://", "ws://")
+        .replace("https://", "wss://")
         .replace("http://", "ws://");
     let connection_manager = Arc::new(WebSocketConnectionManager::new(
         BaseUrl(ws_base_url),
@@ -114,6 +114,7 @@ async fn main() -> std::io::Result<()> {
                 .app_data(web::Data::new(client.clone()))
                 .app_data(web::Data::new(BaseUrl(base_url.clone())))
                 .app_data(web::Data::new(MacaroonHex(macaroon_hex.clone())))
+                .app_data(web::Data::new(config.clone()))
                 .app_data(web::Data::new(ws_proxy_handler.clone()))
                 .configure(api::routes::configure)
         }

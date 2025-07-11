@@ -53,7 +53,7 @@ pub struct SendPaymentRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SendPaymentStreamRequest {
     pub asset_id: String, // base64 encoded bytes
-    pub asset_amount: u64,
+    pub asset_amount: String,
     pub peer_pubkey: String, // base64 encoded bytes
     pub payment_request: serde_json::Value,
     pub rfq_id: String, // base64 encoded bytes
@@ -341,7 +341,7 @@ mod tests {
     fn test_send_payment_stream_request_serialization() {
         let request = SendPaymentStreamRequest {
             asset_id: "test_asset_id".to_string(),
-            asset_amount: 1000,
+            asset_amount: "1000".to_string(),
             peer_pubkey: "test_pubkey".to_string(),
             payment_request: serde_json::json!({"invoice": "test_invoice"}),
             rfq_id: "test_rfq_id".to_string(),
@@ -425,7 +425,7 @@ mod tests {
         // Test that our request format matches the plan specification
         let plan_request = serde_json::json!({
             "asset_id": "YXNzZXRfaWQ=", // base64 encoded bytes
-            "asset_amount": 1000_u64,
+            "asset_amount": "1000",
             "peer_pubkey": "cGVlcl9wdWJrZXk=", // base64 encoded bytes
             "payment_request": {
                 "payment_hash": "test_hash",
@@ -443,7 +443,7 @@ mod tests {
 
         let request = parsed.unwrap();
         assert_eq!(request.asset_id, "YXNzZXRfaWQ=");
-        assert_eq!(request.asset_amount, 1000);
+        assert_eq!(request.asset_amount, "1000");
         assert_eq!(request.peer_pubkey, "cGVlcl9wdWJrZXk=");
         assert_eq!(request.rfq_id, "cmZxX2lk");
         assert_eq!(request.allow_overpay, false);

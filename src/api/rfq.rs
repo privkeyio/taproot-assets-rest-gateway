@@ -252,6 +252,7 @@ async fn rfq_events_ws_handler(
     base_url: web::Data<BaseUrl>,
     macaroon_hex: web::Data<MacaroonHex>,
     client: web::Data<Client>,
+    config: web::Data<crate::config::Config>,
 ) -> ActixResult<HttpResponse> {
     info!("Establishing WebSocket connection for RFQ event notifications");
 
@@ -287,8 +288,16 @@ async fn rfq_events_ws_handler(
         let poll_base_url = base_url_clone.clone();
         let poll_macaroon = macaroon_clone.clone();
 
+        let poll_interval = config.rfq_poll_interval_secs;
         let poll_task = actix_web::rt::spawn(async move {
-            poll_rfq_events(&poll_client, &poll_base_url, &poll_macaroon, poll_session).await;
+            poll_rfq_events(
+                &poll_client,
+                &poll_base_url,
+                &poll_macaroon,
+                poll_session,
+                poll_interval,
+            )
+            .await;
         });
 
         loop {
@@ -346,6 +355,7 @@ async fn poll_rfq_events(
     base_url: &str,
     macaroon_hex: &str,
     session: std::sync::Arc<tokio::sync::Mutex<actix_ws::Session>>,
+    poll_interval_secs: u64,
 ) {
     use tokio::time::{sleep, Duration};
 
@@ -375,8 +385,8 @@ async fn poll_rfq_events(
             }
         }
 
-        // Wait before next poll (adjust interval as needed)
-        sleep(Duration::from_secs(5)).await;
+        // Wait before next poll
+        sleep(Duration::from_secs(poll_interval_secs)).await;
     }
 }
 

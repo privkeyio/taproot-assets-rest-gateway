@@ -2,7 +2,7 @@ use crate::error::AppError;
 use serde::Deserialize;
 use std::path::Path;
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct Config {
     pub taproot_assets_host: String,
     pub macaroon_path: String,
@@ -13,6 +13,7 @@ pub struct Config {
     pub server_address: String,
     pub request_timeout_secs: u64,
     pub rate_limit_per_minute: usize,
+    pub rfq_poll_interval_secs: u64,
 }
 
 impl Config {
@@ -55,6 +56,12 @@ impl Config {
             .parse::<usize>()
             .unwrap_or(100);
 
+        // RFQ polling interval configuration
+        let rfq_poll_interval_secs = std::env::var("RFQ_POLL_INTERVAL_SECS")
+            .unwrap_or_else(|_| "5".to_string())
+            .parse::<u64>()
+            .unwrap_or(5);
+
         // Validate paths exist
         if !Path::new(&macaroon_path).exists() {
             return Err(AppError::ValidationError(format!(
@@ -76,6 +83,7 @@ impl Config {
             server_address,
             request_timeout_secs,
             rate_limit_per_minute,
+            rfq_poll_interval_secs,
         };
 
         // Validate configuration
@@ -117,6 +125,13 @@ impl Config {
         if self.rate_limit_per_minute == 0 {
             return Err(AppError::ValidationError(
                 "RATE_LIMIT_PER_MINUTE must be greater than 0".to_string(),
+            ));
+        }
+
+        // Validate RFQ polling interval
+        if self.rfq_poll_interval_secs == 0 {
+            return Err(AppError::ValidationError(
+                "RFQ_POLL_INTERVAL_SECS must be greater than 0".to_string(),
             ));
         }
 
