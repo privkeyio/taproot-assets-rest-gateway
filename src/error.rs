@@ -26,6 +26,8 @@ pub enum AppError {
     #[error("WebSocket proxy error: {0}")]
     #[allow(dead_code)]
     WebSocketProxyError(String),
+    #[error("Database error: {0}")]
+    DatabaseError(String),
 }
 
 impl AppError {
@@ -36,6 +38,7 @@ impl AppError {
             AppError::SerializationError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::WebSocketError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::WebSocketProxyError(_) => StatusCode::BAD_GATEWAY,
+            AppError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::RequestError(e) => {
                 if e.is_timeout() {
                     StatusCode::GATEWAY_TIMEOUT

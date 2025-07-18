@@ -17,8 +17,12 @@ use tracing_subscriber::{fmt, EnvFilter};
 
 mod api;
 mod config;
+pub mod connection_pool;
+pub mod crypto;
+pub mod database;
 mod error;
 mod middleware;
+pub mod monitoring;
 mod types;
 mod websocket;
 
