@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_ws::{Message as WsMessage, MessageStream, Session};
 use futures_util::{SinkExt, StreamExt};

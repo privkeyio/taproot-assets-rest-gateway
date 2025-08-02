@@ -62,6 +62,12 @@ pub struct MonitoringService {
     connection_durations: Arc<RwLock<Vec<Duration>>>,
 }
 
+impl Default for MonitoringService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MonitoringService {
     pub fn new() -> Self {
         Self {

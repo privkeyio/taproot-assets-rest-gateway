@@ -51,10 +51,10 @@ impl Database {
         // Create database if it doesn't exist
         if !Sqlite::database_exists(database_url)
             .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to check database: {}", e)))?
+            .map_err(|e| AppError::DatabaseError(format!("Failed to check database: {e}")))?
         {
             Sqlite::create_database(database_url).await.map_err(|e| {
-                AppError::DatabaseError(format!("Failed to create database: {}", e))
+                AppError::DatabaseError(format!("Failed to create database: {e}"))
             })?;
             info!("Created SQLite database at: {}", database_url);
         }
@@ -66,7 +66,7 @@ impl Database {
             .connect(database_url)
             .await
             .map_err(|e| {
-                AppError::DatabaseError(format!("Failed to connect to database: {}", e))
+                AppError::DatabaseError(format!("Failed to connect to database: {e}"))
             })?;
 
         // Run migrations
@@ -90,7 +90,7 @@ impl Database {
         )
         .execute(&pool)
         .await
-        .map_err(|e| AppError::DatabaseError(format!("Failed to run migrations: {}", e)))?;
+        .map_err(|e| AppError::DatabaseError(format!("Failed to run migrations: {e}")))?;
 
         info!("SQLite database initialized successfully");
         Ok(pool)
@@ -99,12 +99,12 @@ impl Database {
     /// Initialize Redis connection
     async fn init_redis(redis_url: &str) -> Result<ConnectionManager, AppError> {
         let client = redis::Client::open(redis_url).map_err(|e| {
-            AppError::DatabaseError(format!("Failed to create Redis client: {}", e))
+            AppError::DatabaseError(format!("Failed to create Redis client: {e}"))
         })?;
 
         let conn_manager = ConnectionManager::new(client)
             .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to connect to Redis: {}", e)))?;
+            .map_err(|e| AppError::DatabaseError(format!("Failed to connect to Redis: {e}")))?;
 
         info!("Redis connection established successfully");
         Ok(conn_manager)
@@ -112,20 +112,21 @@ impl Database {
 
     /// Store receiver info in the database
     pub async fn store_receiver_info(&self, info: &ReceiverInfo) -> Result<(), AppError> {
-        // Try Redis first for caching
-        if let Some(redis_conn) = &self.redis_conn {
-            if let Err(e) = self.store_receiver_redis(redis_conn.clone(), info).await {
-                warn!("Failed to store in Redis cache: {}", e);
-            }
-        }
-
-        // Store in SQLite if available
+        // Store in SQLite first if available - this is the persistent store
         if let Some(pool) = &self.sqlite_pool {
             self.store_receiver_sqlite(pool, info).await?;
         } else if self.redis_conn.is_none() {
             return Err(AppError::DatabaseError(
                 "No database backend available".to_string(),
             ));
+        }
+
+        // Only update Redis cache after SQLite succeeds
+        if let Some(redis_conn) = &self.redis_conn {
+            if let Err(e) = self.store_receiver_redis(redis_conn.clone(), info).await {
+                warn!("Failed to store in Redis cache: {}", e);
+                // Note: We don't fail the operation if Redis fails since SQLite succeeded
+            }
         }
 
         Ok(())
@@ -166,7 +167,7 @@ impl Database {
         let metadata_json = info
             .metadata
             .as_ref()
-            .map(|m| serde_json::to_string(m))
+            .map(serde_json::to_string)
             .transpose()
             .map_err(|e| AppError::SerializationError(e.to_string()))?;
 
@@ -189,7 +190,7 @@ impl Database {
         .bind(metadata_json)
         .execute(pool)
         .await
-        .map_err(|e| AppError::DatabaseError(format!("Failed to store receiver: {}", e)))?;
+        .map_err(|e| AppError::DatabaseError(format!("Failed to store receiver: {e}")))?;
 
         Ok(())
     }
@@ -223,7 +224,7 @@ impl Database {
         mut conn: ConnectionManager,
         receiver_id: &str,
     ) -> Result<Option<ReceiverInfo>, RedisError> {
-        let key = format!("receiver:{}", receiver_id);
+        let key = format!("receiver:{receiver_id}");
         let value: Option<String> = conn.get(&key).await?;
 
         if let Some(json) = value {
@@ -267,7 +268,7 @@ impl Database {
         .bind(receiver_id)
         .fetch_optional(pool)
         .await
-        .map_err(|e| AppError::DatabaseError(format!("Failed to query receiver: {}", e)))?;
+        .map_err(|e| AppError::DatabaseError(format!("Failed to query receiver: {e}")))?;
 
         if let Some((
             receiver_id,
@@ -306,7 +307,7 @@ impl Database {
         // Try Redis cache first
         if let Some(redis_conn) = &self.redis_conn {
             let mut conn = redis_conn.clone();
-            let key = format!("pubkey:{}", public_key);
+            let key = format!("pubkey:{public_key}");
             if let Ok(Some(receiver_id)) = conn.get::<_, Option<String>>(&key).await {
                 return Ok(Some(receiver_id));
             }
@@ -320,9 +321,7 @@ impl Database {
             .bind(public_key)
             .fetch_optional(pool)
             .await
-            .map_err(|e| {
-                AppError::DatabaseError(format!("Failed to query by public key: {}", e))
-            })?;
+            .map_err(|e| AppError::DatabaseError(format!("Failed to query by public key: {e}")))?;
 
             Ok(row)
         } else {
@@ -338,14 +337,14 @@ impl Database {
                 .execute(pool)
                 .await
                 .map_err(|e| {
-                    AppError::DatabaseError(format!("Failed to deactivate receiver: {}", e))
+                    AppError::DatabaseError(format!("Failed to deactivate receiver: {e}"))
                 })?;
         }
 
         // Remove from Redis cache
         if let Some(redis_conn) = &self.redis_conn {
             let mut conn = redis_conn.clone();
-            let key = format!("receiver:{}", receiver_id);
+            let key = format!("receiver:{receiver_id}");
             let _: Result<(), _> = conn.del(&key).await;
         }
 

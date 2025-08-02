@@ -9,6 +9,7 @@ use crate::websocket::proxy_handler::WebSocketProxyHandler;
 use actix_web::{web, HttpRequest, HttpResponse, Result as ActixResult};
 use actix_ws::{Message, MessageStream, Session};
 use base64::Engine;
+use bitcoin::bech32;
 use chrono::Utc;
 use futures_util::StreamExt;
 use reqwest::Client;
@@ -239,6 +240,7 @@ async fn receive_websocket(
     Ok(response)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_mailbox_websocket_connection(
     mut session: Session,
     mut msg_stream: MessageStream,
@@ -407,6 +409,7 @@ fn check_rate_limit(limits: &mut ConnectionLimits) -> bool {
     limits.message_count <= RATE_LIMIT_MESSAGES_PER_MINUTE
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_mailbox_message(
     state: &mut MailboxState,
     msg: WebSocketMailboxMessage,
@@ -710,7 +713,7 @@ async fn validate_authentication(
             pk
         } else {
             // Generate a placeholder if we can't determine the actual public key
-            format!("unknown_{}", receiver_id)
+            format!("unknown_{receiver_id}")
         };
 
         let receiver_info = ReceiverInfo {
@@ -865,6 +868,34 @@ async fn validate_macaroon_permissions(
     Ok(true)
 }
 
+fn is_valid_bech32_chars(s: &str) -> bool {
+    const BECH32_CHARSET: &[u8] = b"qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+    s.chars()
+        .all(|c| c.is_ascii_lowercase() && BECH32_CHARSET.contains(&(c as u8)))
+}
+
+fn validate_taproot_address_format(address: &str) -> Result<bool, AppError> {
+    if !address.starts_with("taprt1") {
+        return Ok(false);
+    }
+
+    let data_part = &address[6..]; // Remove "taprt1" prefix
+
+    // Check if it contains only valid Bech32 characters
+    if !is_valid_bech32_chars(data_part) {
+        return Ok(false);
+    }
+
+    // Attempt to decode using bech32
+    match bech32::decode(address) {
+        Ok((hrp, data)) => {
+            // Verify it's a taproot address with correct HRP
+            Ok(hrp.as_str() == "taprt1" && !data.is_empty())
+        }
+        Err(_) => Ok(false),
+    }
+}
+
 async fn validate_receiver_id(
     receiver_id: &str,
     client: &Client,
@@ -878,17 +909,20 @@ async fn validate_receiver_id(
         return Ok(false);
     }
 
-    // Check if receiver_id contains only valid characters
-    if !receiver_id
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
-    {
-        warn!("Receiver ID contains invalid characters: {}", receiver_id);
-        return Ok(false);
+    // First check if it's a potential Taproot address format - validate Bech32 characters
+    if !is_valid_bech32_chars(receiver_id) {
+        // If not valid Bech32 chars, check if it's alphanumeric format
+        if !receiver_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
+        {
+            warn!("Receiver ID contains invalid characters: {}", receiver_id);
+            return Ok(false);
+        }
     }
 
     // Check if it's a public key format
-    if let Some(_) = derive_public_key_from_receiver_id(receiver_id)? {
+    if (derive_public_key_from_receiver_id(receiver_id)?).is_some() {
         // If it's a valid public key format, it's valid
         info!("Receiver ID is a valid public key: {}", receiver_id);
         return Ok(true);
@@ -912,31 +946,53 @@ async fn validate_receiver_id(
 
     // Attempt to validate against tapd backend by checking if an address exists
     // This is done by trying to decode a taproot address associated with the receiver
-    let decode_url = format!("{}/v1/taproot-assets/addrs/decode", base_url);
-    let test_address = format!("taprt1{}", receiver_id); // Construct a test address
+    let decode_url = format!("{base_url}/v1/taproot-assets/addrs/decode");
+    let test_address = format!("taprt1{receiver_id}"); // Construct a test address
 
-    let response = client
-        .post(&decode_url)
-        .header("Grpc-Metadata-macaroon", macaroon_hex)
-        .json(&serde_json::json!({"addr": test_address}))
-        .timeout(Duration::from_secs(2))
-        .send()
-        .await;
+    // First validate the constructed address format locally
+    match validate_taproot_address_format(&test_address) {
+        Ok(true) => {
+            // Address format is valid, proceed with remote validation
+            let response = client
+                .post(&decode_url)
+                .header("Grpc-Metadata-macaroon", macaroon_hex)
+                .json(&serde_json::json!({"addr": test_address}))
+                .timeout(Duration::from_secs(2))
+                .send()
+                .await;
 
-    match response {
-        Ok(resp) if resp.status().is_success() => {
-            info!("Receiver ID validated via tapd backend: {}", receiver_id);
-            Ok(true)
+            match response {
+                Ok(resp) if resp.status().is_success() => {
+                    info!("Receiver ID validated via tapd backend: {}", receiver_id);
+                    Ok(true)
+                }
+                _ => {
+                    // If remote validation fails but local format is valid, reject it
+                    // This prevents accepting addresses that don't exist on the backend
+                    warn!(
+                        "Receiver ID has valid format but failed backend validation: {}",
+                        receiver_id
+                    );
+                    Ok(false)
+                }
+            }
         }
-        _ => {
-            // If we can't validate via backend, accept it if format is valid
-            // This allows for new receiver IDs to be registered
-            info!("Receiver ID format is valid, accepting: {}", receiver_id);
-            Ok(true)
+        Ok(false) => {
+            // Invalid Taproot address format
+            warn!(
+                "Receiver ID does not form a valid Taproot address: {}",
+                receiver_id
+            );
+            Ok(false)
+        }
+        Err(e) => {
+            warn!("Error validating Taproot address format: {}", e);
+            Ok(false)
         }
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn stream_mailbox_messages(
     client: &Client,
     base_url: &str,
@@ -1080,7 +1136,7 @@ async fn stream_mailbox_messages(
         }
 
         // Check if client is still connected by sending a ping
-        if let Err(_) = session.ping(b"").await {
+        if (session.ping(b"").await).is_err() {
             info!("Client disconnected, ending stream");
             break;
         }
@@ -1146,7 +1202,7 @@ async fn receive_websocket_with_proxy(
     ws_proxy_handler
         .handle_websocket(req, stream, backend_endpoint, true)
         .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e))
+        .map_err(actix_web::error::ErrorInternalServerError)
 }
 
 pub fn configure(cfg: &mut web::ServiceConfig) {

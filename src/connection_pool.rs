@@ -65,7 +65,7 @@ impl ConnectionPool {
 
         let client = client_builder
             .build()
-            .map_err(|e| AppError::InvalidInput(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| AppError::InvalidInput(format!("Failed to create HTTP client: {e}")))?;
 
         Ok(Self {
             client,
@@ -146,13 +146,27 @@ impl PooledClient {
 
 impl Drop for PooledClient {
     fn drop(&mut self) {
-        // Update stats when connection is returned
+        // Update stats when connection is returned - use a safe approach that won't panic
         let stats = self.stats.clone();
-        tokio::spawn(async move {
-            let mut stats = stats.write().await;
-            stats.active_connections = stats.active_connections.saturating_sub(1);
+
+        // Try to update stats using try_write to avoid blocking or panicking
+        if let Ok(mut stats_guard) = stats.try_write() {
+            stats_guard.active_connections = stats_guard.active_connections.saturating_sub(1);
             debug!("Returned connection to pool");
-        });
+            return;
+        }
+
+        // If we can't acquire the lock immediately, spawn a non-blocking task
+        // This is safer than blocking in Drop which can cause deadlocks or panics
+        if tokio::runtime::Handle::try_current().is_ok() {
+            tokio::spawn(async move {
+                let mut stats_guard = stats.write().await;
+                stats_guard.active_connections = stats_guard.active_connections.saturating_sub(1);
+                debug!("Returned connection to pool (async)");
+            });
+        } else {
+            warn!("Cannot update connection stats: not in tokio runtime context");
+        }
     }
 }
 

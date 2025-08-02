@@ -17,7 +17,7 @@ pub fn verify_signature(
     // Parse the public key
     let public_key = PublicKey::from_str(public_key_str).map_err(|e| {
         error!("Failed to parse public key: {}", e);
-        AppError::InvalidInput(format!("Invalid public key format: {}", e))
+        AppError::InvalidInput(format!("Invalid public key format: {e}"))
     })?;
 
     // Parse the signature
@@ -26,11 +26,11 @@ pub fn verify_signature(
             // Hex encoded signature
             let sig_bytes = hex::decode(signature_str).map_err(|e| {
                 error!("Failed to decode hex signature: {}", e);
-                AppError::InvalidInput(format!("Invalid hex signature: {}", e))
+                AppError::InvalidInput(format!("Invalid hex signature: {e}"))
             })?;
             Signature::from_compact(&sig_bytes).map_err(|e| {
                 error!("Failed to parse signature from bytes: {}", e);
-                AppError::InvalidInput(format!("Invalid signature format: {}", e))
+                AppError::InvalidInput(format!("Invalid signature format: {e}"))
             })?
         } else {
             // Try base64 encoded signature
@@ -38,11 +38,11 @@ pub fn verify_signature(
                 .decode(signature_str)
                 .map_err(|e| {
                     error!("Failed to decode base64 signature: {}", e);
-                    AppError::InvalidInput(format!("Invalid base64 signature: {}", e))
+                    AppError::InvalidInput(format!("Invalid base64 signature: {e}"))
                 })?;
             Signature::from_compact(&sig_bytes).map_err(|e| {
                 error!("Failed to parse signature from bytes: {}", e);
-                AppError::InvalidInput(format!("Invalid signature format: {}", e))
+                AppError::InvalidInput(format!("Invalid signature format: {e}"))
             })?
         };
 
@@ -54,7 +54,7 @@ pub fn verify_signature(
     // Create a secp256k1 message from the hash
     let msg = Message::from_digest_slice(&hash).map_err(|e| {
         error!("Failed to create message from hash: {}", e);
-        AppError::InvalidInput(format!("Failed to create message: {}", e))
+        AppError::InvalidInput(format!("Failed to create message: {e}"))
     })?;
 
     // Verify the signature
@@ -81,7 +81,7 @@ pub fn verify_schnorr_signature(
     // Parse the x-only public key (32 bytes)
     let xonly_pubkey = secp256k1::XOnlyPublicKey::from_str(public_key_str).map_err(|e| {
         error!("Failed to parse x-only public key: {}", e);
-        AppError::InvalidInput(format!("Invalid x-only public key format: {}", e))
+        AppError::InvalidInput(format!("Invalid x-only public key format: {e}"))
     })?;
 
     // Parse the Schnorr signature (64 bytes)
@@ -89,22 +89,22 @@ pub fn verify_schnorr_signature(
         if signature_str.len() == 128 && signature_str.chars().all(|c| c.is_ascii_hexdigit()) {
             let sig_bytes = hex::decode(signature_str).map_err(|e| {
                 error!("Failed to decode hex Schnorr signature: {}", e);
-                AppError::InvalidInput(format!("Invalid hex signature: {}", e))
+                AppError::InvalidInput(format!("Invalid hex signature: {e}"))
             })?;
             secp256k1::schnorr::Signature::from_slice(&sig_bytes).map_err(|e| {
                 error!("Failed to parse Schnorr signature: {}", e);
-                AppError::InvalidInput(format!("Invalid Schnorr signature format: {}", e))
+                AppError::InvalidInput(format!("Invalid Schnorr signature format: {e}"))
             })?
         } else {
             let sig_bytes = base64::engine::general_purpose::STANDARD
                 .decode(signature_str)
                 .map_err(|e| {
                     error!("Failed to decode base64 Schnorr signature: {}", e);
-                    AppError::InvalidInput(format!("Invalid base64 signature: {}", e))
+                    AppError::InvalidInput(format!("Invalid base64 signature: {e}"))
                 })?;
             secp256k1::schnorr::Signature::from_slice(&sig_bytes).map_err(|e| {
                 error!("Failed to parse Schnorr signature: {}", e);
-                AppError::InvalidInput(format!("Invalid Schnorr signature format: {}", e))
+                AppError::InvalidInput(format!("Invalid Schnorr signature format: {e}"))
             })?
         };
 
@@ -132,18 +132,15 @@ pub fn derive_public_key_from_receiver_id(receiver_id: &str) -> Result<Option<St
         && receiver_id.chars().all(|c| c.is_ascii_hexdigit())
     {
         // Validate it's a valid public key
-        match PublicKey::from_str(receiver_id) {
-            Ok(_) => return Ok(Some(receiver_id.to_string())),
-            Err(_) => {}
+        if PublicKey::from_str(receiver_id).is_ok() {
+            return Ok(Some(receiver_id.to_string()));
         }
     }
 
     // Check if it's an x-only public key (32 bytes hex encoded) for Taproot
-    if receiver_id.len() == 64 && receiver_id.chars().all(|c| c.is_ascii_hexdigit()) {
-        match secp256k1::XOnlyPublicKey::from_str(receiver_id) {
-            Ok(_) => return Ok(Some(receiver_id.to_string())),
-            Err(_) => {}
-        }
+    if receiver_id.len() == 64 && receiver_id.chars().all(|c| c.is_ascii_hexdigit())
+        && secp256k1::XOnlyPublicKey::from_str(receiver_id).is_ok() {
+        return Ok(Some(receiver_id.to_string()));
     }
 
     // If receiver_id is not a direct public key, it might be an identifier
