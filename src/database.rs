@@ -53,9 +53,9 @@ impl Database {
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to check database: {e}")))?
         {
-            Sqlite::create_database(database_url).await.map_err(|e| {
-                AppError::DatabaseError(format!("Failed to create database: {e}"))
-            })?;
+            Sqlite::create_database(database_url)
+                .await
+                .map_err(|e| AppError::DatabaseError(format!("Failed to create database: {e}")))?;
             info!("Created SQLite database at: {}", database_url);
         }
 
@@ -65,9 +65,7 @@ impl Database {
             .acquire_timeout(Duration::from_secs(3))
             .connect(database_url)
             .await
-            .map_err(|e| {
-                AppError::DatabaseError(format!("Failed to connect to database: {e}"))
-            })?;
+            .map_err(|e| AppError::DatabaseError(format!("Failed to connect to database: {e}")))?;
 
         // Run migrations
         sqlx::query(
@@ -98,9 +96,8 @@ impl Database {
 
     /// Initialize Redis connection
     async fn init_redis(redis_url: &str) -> Result<ConnectionManager, AppError> {
-        let client = redis::Client::open(redis_url).map_err(|e| {
-            AppError::DatabaseError(format!("Failed to create Redis client: {e}"))
-        })?;
+        let client = redis::Client::open(redis_url)
+            .map_err(|e| AppError::DatabaseError(format!("Failed to create Redis client: {e}")))?;
 
         let conn_manager = ConnectionManager::new(client)
             .await
