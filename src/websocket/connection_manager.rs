@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! WebSocket Connection Manager for proxying connections between clients and tapd backend.
 //!
 //! This module provides a connection manager that handles WebSocket connections to the tapd
