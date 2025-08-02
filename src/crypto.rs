@@ -454,16 +454,16 @@ mod tests {
         let verification_result = verify_signature(message, &sig_hex, &pubkey_hex).unwrap();
 
         // Assert that it returns true
-        assert_eq!(
-            verification_result, true,
+        assert!(
+            verification_result,
             "Should return Ok(true) for valid signature"
         );
 
         // Test invalid signature returns Ok(false)
         let wrong_message = "Wrong message";
         let verification_result = verify_signature(wrong_message, &sig_hex, &pubkey_hex).unwrap();
-        assert_eq!(
-            verification_result, false,
+        assert!(
+            !verification_result,
             "Should return Ok(false) for invalid signature"
         );
     }
