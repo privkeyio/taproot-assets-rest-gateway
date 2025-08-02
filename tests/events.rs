@@ -399,21 +399,18 @@ async fn test_websocket_endpoint_availability() {
                 assert_ne!(
                     resp.status(),
                     actix_web::http::StatusCode::NOT_FOUND,
-                    "WebSocket endpoint {} not found",
-                    endpoint
+                    "WebSocket endpoint {endpoint} not found"
                 );
                 assert_ne!(
                     resp.status(),
                     actix_web::http::StatusCode::METHOD_NOT_ALLOWED,
-                    "WebSocket endpoint {} does not support GET method",
-                    endpoint
+                    "WebSocket endpoint {endpoint} does not support GET method"
                 );
             }
             Err(_) => {
                 // Timeout is acceptable, endpoint exists but waiting for WebSocket upgrade
                 println!(
-                    "WebSocket endpoint {} exists but timed out (acceptable)",
-                    endpoint
+                    "WebSocket endpoint {endpoint} exists but timed out (acceptable)"
                 );
             }
         }
@@ -466,21 +463,18 @@ async fn test_websocket_query_parameter_forwarding() {
                 assert_ne!(
                     resp.status(),
                     actix_web::http::StatusCode::NOT_FOUND,
-                    "WebSocket {} endpoint with parameters not found",
-                    event_type
+                    "WebSocket {event_type} endpoint with parameters not found"
                 );
                 assert_ne!(
                     resp.status(),
                     actix_web::http::StatusCode::BAD_REQUEST,
-                    "WebSocket {} endpoint rejected parameters",
-                    event_type
+                    "WebSocket {event_type} endpoint rejected parameters"
                 );
             }
             Err(_) => {
                 // Timeout is acceptable for WebSocket endpoints
                 println!(
-                    "WebSocket {} endpoint with parameters timed out (acceptable)",
-                    event_type
+                    "WebSocket {event_type} endpoint with parameters timed out (acceptable)"
                 );
             }
         }

@@ -315,7 +315,7 @@ async fn test_mailbox_websocket_rate_limiting() {
     for i in 0..5 {
         let req = test::TestRequest::get()
             .uri("/v1/taproot-assets/mailbox/receive")
-            .insert_header(("x-request-id", format!("rate-limit-test-{}", i)))
+            .insert_header(("x-request-id", format!("rate-limit-test-{i}")))
             .to_request();
 
         let result = timeout(Duration::from_millis(100), test::call_service(&app, req)).await;
@@ -326,13 +326,12 @@ async fn test_mailbox_websocket_rate_limiting() {
                 assert_ne!(
                     resp.status(),
                     actix_web::http::StatusCode::TOO_MANY_REQUESTS,
-                    "Rate limited on request {}",
-                    i
+                    "Rate limited on request {i}"
                 );
             }
             Err(_) => {
                 // Timeout is acceptable
-                println!("Rate limit test request {} timed out", i);
+                println!("Rate limit test request {i} timed out");
             }
         }
     }

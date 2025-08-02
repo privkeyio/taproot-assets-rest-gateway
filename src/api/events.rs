@@ -348,7 +348,7 @@ mod tests {
     fn test_websocket_url_format_asset_mint() {
         let base_url = "wss://localhost:8080";
         let endpoint = "/v1/taproot-assets/events/asset-mint?method=POST";
-        let full_url = format!("{}{}", base_url, endpoint);
+        let full_url = format!("{base_url}{endpoint}");
 
         assert_eq!(
             full_url,
@@ -362,7 +362,7 @@ mod tests {
     fn test_websocket_url_format_asset_receive() {
         let base_url = "wss://localhost:8080";
         let endpoint = "/v1/taproot-assets/events/asset-receive?method=POST";
-        let full_url = format!("{}{}", base_url, endpoint);
+        let full_url = format!("{base_url}{endpoint}");
 
         assert_eq!(
             full_url,
@@ -376,7 +376,7 @@ mod tests {
     fn test_websocket_url_format_asset_send() {
         let base_url = "wss://localhost:8080";
         let endpoint = "/v1/taproot-assets/events/asset-send?method=POST";
-        let full_url = format!("{}{}", base_url, endpoint);
+        let full_url = format!("{base_url}{endpoint}");
 
         assert_eq!(
             full_url,
