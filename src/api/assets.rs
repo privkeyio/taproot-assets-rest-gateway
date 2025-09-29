@@ -6,13 +6,66 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, instrument};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct Asset {
-    #[serde(default)]
+pub struct AssetGenesis {
+    pub genesis_point: Option<String>,
+    pub name: Option<String>,
+    pub meta_hash: Option<String>,
     pub asset_id: Option<String>,
-    #[serde(default)]
     pub asset_type: Option<String>,
+    pub output_index: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ChainAnchor {
+    pub anchor_tx: Option<String>,
+    pub anchor_block_hash: Option<String>,
+    pub anchor_outpoint: Option<String>,
+    pub internal_key: Option<String>,
+    pub merkle_root: Option<String>,
+    pub tapscript_sibling: Option<String>,
+    pub block_height: Option<u32>,
+    pub block_timestamp: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Asset {
+    pub version: Option<String>,
+    pub asset_genesis: Option<AssetGenesis>,
     #[serde(default)]
     pub amount: Option<String>,
+    pub lock_time: Option<u32>,
+    pub relative_lock_time: Option<u32>,
+    pub script_version: Option<u32>,
+    pub script_key: Option<String>,
+    pub script_key_is_local: Option<bool>,
+    pub asset_group: Option<serde_json::Value>,
+    pub chain_anchor: Option<ChainAnchor>,
+    pub prev_witnesses: Option<Vec<serde_json::Value>>,
+    pub is_spent: Option<bool>,
+    pub lease_owner: Option<String>,
+    pub lease_expiry: Option<String>,
+    pub is_burn: Option<bool>,
+    pub script_key_declared_known: Option<bool>,
+    pub script_key_has_script_path: Option<bool>,
+    pub decimal_display: Option<serde_json::Value>,
+    pub script_key_type: Option<String>,
+    
+    // Legacy fields for backward compatibility - these will be populated from asset_genesis
+    #[serde(skip_deserializing)]
+    pub asset_id: Option<String>,
+    #[serde(skip_deserializing)]
+    pub asset_type: Option<String>,
+}
+
+impl Asset {
+    // Post-process to populate legacy fields from nested structure
+    pub fn populate_legacy_fields(mut self) -> Self {
+        if let Some(ref genesis) = self.asset_genesis {
+            self.asset_id = genesis.asset_id.clone();
+            self.asset_type = genesis.asset_type.clone();
+        }
+        self
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -32,10 +85,13 @@ enum AssetResponse {
 
 impl AssetResponse {
     fn into_assets(self) -> Vec<Asset> {
-        match self {
+        let assets = match self {
             AssetResponse::Wrapped { assets, .. } => assets,
             AssetResponse::Direct(assets) => assets,
-        }
+        };
+        
+        // Populate legacy fields for backward compatibility
+        assets.into_iter().map(|asset| asset.populate_legacy_fields()).collect()
     }
 }
 
