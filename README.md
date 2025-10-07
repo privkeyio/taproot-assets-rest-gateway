@@ -101,6 +101,18 @@ The gateway forwards requests to tapd's REST API (port 8089) while adding the ne
 
 For complete API reference, see the [official Taproot Assets API documentation](https://lightning.engineering/api-docs/api/taproot-assets/).
 
+## Complete Workshop
+
+For a hands-on tutorial covering setup, minting, sending, receiving, and building a React app with Taproot Assets, check out:
+
+👉 **[Taproot Assets Web Development Workshop](https://github.com/privkeyio/taproot-assets-webdev-examples)**
+
+The workshop includes:
+- **Part 0**: Gateway setup with Polar
+- **Part 1**: Understanding CORS and authentication barriers
+- **Part 2**: Complete asset lifecycle (mint, send, receive)
+- **Part 3**: Production React app with TypeScript
+
 ## Usage Examples
 
 ### Curl: Mint New Asset
