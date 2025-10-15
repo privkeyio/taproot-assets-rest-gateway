@@ -287,26 +287,6 @@ export function useTaprootAssets() {
 }
 ```
 
-## .env Configuration
-
-```env
-# Required
-TAPROOT_ASSETS_HOST=127.0.0.1:8289
-TAPD_MACAROON_PATH=/path/to/tapd/admin.macaroon
-LND_MACAROON_PATH=/path/to/lnd/admin.macaroon
-
-# Security (use true in production)
-TLS_VERIFY=false
-
-# CORS - Add your app's URL
-CORS_ORIGINS=http://localhost:3000,http://localhost:5173
-
-# Optional
-SERVER_ADDRESS=127.0.0.1:8080
-REQUEST_TIMEOUT_SECS=30
-RATE_LIMIT_PER_MINUTE=100
-```
-
 ## Development Setup
 
 1. **Install Polar** for local Lightning development
