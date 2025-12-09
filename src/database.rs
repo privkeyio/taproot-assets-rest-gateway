@@ -59,10 +59,12 @@ impl Database {
             info!("Created SQLite database at: {}", database_url);
         }
 
-        // Create connection pool
         let pool = SqlitePoolOptions::new()
             .max_connections(5)
+            .min_connections(1)
             .acquire_timeout(Duration::from_secs(3))
+            .idle_timeout(Duration::from_secs(600))
+            .max_lifetime(Duration::from_secs(3600))
             .connect(database_url)
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to connect to database: {e}")))?;

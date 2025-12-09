@@ -114,24 +114,36 @@ impl Config {
             ));
         }
 
-        // Validate timeout
         if self.request_timeout_secs == 0 {
             return Err(AppError::ValidationError(
                 "REQUEST_TIMEOUT_SECS must be greater than 0".to_string(),
             ));
         }
+        if self.request_timeout_secs > 300 {
+            return Err(AppError::ValidationError(
+                "REQUEST_TIMEOUT_SECS must not exceed 300 seconds".to_string(),
+            ));
+        }
 
-        // Validate rate limit
         if self.rate_limit_per_minute == 0 {
             return Err(AppError::ValidationError(
                 "RATE_LIMIT_PER_MINUTE must be greater than 0".to_string(),
             ));
         }
+        if self.rate_limit_per_minute > 10000 {
+            return Err(AppError::ValidationError(
+                "RATE_LIMIT_PER_MINUTE must not exceed 10000".to_string(),
+            ));
+        }
 
-        // Validate RFQ polling interval
         if self.rfq_poll_interval_secs == 0 {
             return Err(AppError::ValidationError(
                 "RFQ_POLL_INTERVAL_SECS must be greater than 0".to_string(),
+            ));
+        }
+        if self.rfq_poll_interval_secs > 60 {
+            return Err(AppError::ValidationError(
+                "RFQ_POLL_INTERVAL_SECS must not exceed 60 seconds".to_string(),
             ));
         }
 

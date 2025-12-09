@@ -15,6 +15,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing_subscriber::{fmt, EnvFilter};
 
+const MAX_PAYLOAD_SIZE: usize = 10 * 1024 * 1024;
+
 mod api;
 mod config;
 pub mod connection_pool;
@@ -115,6 +117,8 @@ async fn main() -> std::io::Result<()> {
                 .wrap(Logger::new(
                     "%a \"%r\" %s %b \"%{Referer}i\" \"%{User-Agent}i\" %T",
                 ))
+                .app_data(web::PayloadConfig::new(MAX_PAYLOAD_SIZE))
+                .app_data(web::JsonConfig::default().limit(MAX_PAYLOAD_SIZE))
                 .app_data(web::Data::new(client.clone()))
                 .app_data(web::Data::new(BaseUrl(base_url.clone())))
                 .app_data(web::Data::new(MacaroonHex(macaroon_hex.clone())))
@@ -123,8 +127,16 @@ async fn main() -> std::io::Result<()> {
                 .configure(api::routes::configure)
         }
     })
+    .workers(num_cpus())
     .bind(&server_address)?
     .shutdown_timeout(30) // 30 second graceful shutdown
     .run()
     .await
+}
+
+fn num_cpus() -> usize {
+    std::thread::available_parallelism()
+        .map(|p| p.get())
+        .unwrap_or(2)
+        .clamp(2, 16)
 }
