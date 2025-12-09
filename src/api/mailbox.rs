@@ -65,6 +65,7 @@ const RATE_LIMIT_MESSAGES_PER_MINUTE: u32 = 60;
 const MAX_MESSAGE_SIZE_BYTES: usize = 64 * 1024; // 64KB
 const CHALLENGE_EXPIRY_SECS: u64 = 300; // 5 minutes
 const TIMESTAMP_TOLERANCE_SECS: i64 = 30; // 30 seconds tolerance for clock skew
+const MAX_ACTIVE_CHALLENGES: usize = 10_000;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct WebSocketMailboxMessage {
@@ -566,6 +567,12 @@ async fn generate_challenge() -> Result<serde_json::Value, AppError> {
 
         // Clean up expired challenges
         challenges.retain(|_, data| data.issued_at.elapsed().as_secs() < CHALLENGE_EXPIRY_SECS);
+
+        if challenges.len() >= MAX_ACTIVE_CHALLENGES {
+            return Err(AppError::ValidationError(
+                "Too many pending challenges. Please try again later.".to_string(),
+            ));
+        }
 
         challenges.insert(challenge_id.clone(), challenge_data);
     }
