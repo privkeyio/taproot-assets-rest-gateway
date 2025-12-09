@@ -80,6 +80,7 @@ where
 pub struct RateLimiter {
     requests_per_minute: usize,
     cleanup_interval: Duration,
+    max_tracked_ips: usize,
 }
 
 impl RateLimiter {
@@ -87,6 +88,7 @@ impl RateLimiter {
         Self {
             requests_per_minute,
             cleanup_interval: Duration::from_secs(60),
+            max_tracked_ips: 10_000,
         }
     }
 }
@@ -118,6 +120,7 @@ where
             requests_per_minute: self.requests_per_minute,
             last_cleanup: Arc::new(Mutex::new(Instant::now())),
             cleanup_interval: self.cleanup_interval,
+            max_tracked_ips: self.max_tracked_ips,
         })
     }
 }
@@ -128,6 +131,7 @@ pub struct RateLimiterService<S> {
     requests_per_minute: usize,
     last_cleanup: Arc<Mutex<Instant>>,
     cleanup_interval: Duration,
+    max_tracked_ips: usize,
 }
 
 #[derive(Debug)]
@@ -195,6 +199,11 @@ where
         // Check rate limit
         {
             let mut store = self.store.lock().unwrap();
+
+            if !store.contains_key(&client_id) && store.len() >= self.max_tracked_ips {
+                return Box::pin(async { Err(RateLimitError.into()) });
+            }
+
             let timestamps = store.entry(client_id.clone()).or_default();
 
             // Remove old timestamps
