@@ -49,7 +49,7 @@ pub struct Asset {
     pub script_key_has_script_path: Option<bool>,
     pub decimal_display: Option<serde_json::Value>,
     pub script_key_type: Option<String>,
-    
+
     // Legacy fields for backward compatibility - these will be populated from asset_genesis
     #[serde(skip_deserializing)]
     pub asset_id: Option<String>,
@@ -89,9 +89,12 @@ impl AssetResponse {
             AssetResponse::Wrapped { assets, .. } => assets,
             AssetResponse::Direct(assets) => assets,
         };
-        
+
         // Populate legacy fields for backward compatibility
-        assets.into_iter().map(|asset| asset.populate_legacy_fields()).collect()
+        assets
+            .into_iter()
+            .map(|asset| asset.populate_legacy_fields())
+            .collect()
     }
 }
 
