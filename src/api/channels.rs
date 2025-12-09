@@ -51,6 +51,7 @@ pub struct SendPaymentRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct SendPaymentStreamRequest {
     pub asset_id: String, // base64 encoded bytes
     pub asset_amount: String,
@@ -62,6 +63,7 @@ pub struct SendPaymentStreamRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct SendPaymentStreamResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub accepted_sell_order: Option<serde_json::Value>, // PeerAcceptedSellQuote
@@ -410,7 +412,7 @@ mod tests {
         // Validate the WebSocket URL format matches the plan specification
         let base_url = "wss://localhost:8080";
         let endpoint = "/v1/taproot-assets/channels/send-payment?method=POST";
-        let full_url = format!("{}{}", base_url, endpoint);
+        let full_url = format!("{base_url}{endpoint}");
 
         assert_eq!(
             full_url,
@@ -446,7 +448,7 @@ mod tests {
         assert_eq!(request.asset_amount, "1000");
         assert_eq!(request.peer_pubkey, "cGVlcl9wdWJrZXk=");
         assert_eq!(request.rfq_id, "cmZxX2lk");
-        assert_eq!(request.allow_overpay, false);
+        assert!(!request.allow_overpay);
         assert_eq!(request.group_key, Some("Z3JvdXBfa2V5".to_string()));
     }
 

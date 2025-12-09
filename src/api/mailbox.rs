@@ -1356,7 +1356,7 @@ mod tests {
     fn test_websocket_url_format() {
         let base_url = "wss://localhost:8080";
         let endpoint = "/v1/taproot-assets/mailbox/receive";
-        let full_url = format!("{}{}", base_url, endpoint);
+        let full_url = format!("{base_url}{endpoint}");
 
         assert_eq!(
             full_url,

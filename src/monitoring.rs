@@ -316,7 +316,7 @@ mod tests {
         // Create multiple connections
         for i in 0..5 {
             monitoring
-                .record_connection(format!("conn_{}", i), format!("127.0.0.1:{}", 12345 + i))
+                .record_connection(format!("conn_{i}"), format!("127.0.0.1:{}", 12345 + i))
                 .await;
         }
 
