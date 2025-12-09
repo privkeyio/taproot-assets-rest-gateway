@@ -1081,7 +1081,7 @@ mod tests {
 
         // Verify correlation tracker is present
         assert!(session.correlation_tracker.is_some());
-        assert_eq!(session.correlation_required, true);
+        assert!(session.correlation_required);
 
         // Test correlation tracker functionality
         if let Some(ref tracker) = session.correlation_tracker {
