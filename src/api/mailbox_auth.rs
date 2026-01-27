@@ -43,7 +43,7 @@ pub(crate) async fn generate_challenge() -> Result<serde_json::Value, AppError> 
     };
 
     {
-        let mut challenges = ACTIVE_CHALLENGES.lock().unwrap();
+        let mut challenges = ACTIVE_CHALLENGES.lock().unwrap_or_else(|e| e.into_inner());
 
         challenges.retain(|_, data| data.issued_at.elapsed().as_secs() < CHALLENGE_EXPIRY_SECS);
 
@@ -112,7 +112,9 @@ pub(crate) async fn validate_authentication(
     }
 
     let challenge_data = {
-        let mut challenges = ACTIVE_CHALLENGES.lock().unwrap();
+        let mut challenges = ACTIVE_CHALLENGES.lock().unwrap_or_else(|e| e.into_inner());
+        challenges.retain(|_, data| data.issued_at.elapsed().as_secs() < CHALLENGE_EXPIRY_SECS);
+
         let data = challenges
             .get(challenge_id)
             .ok_or_else(|| {
@@ -120,12 +122,6 @@ pub(crate) async fn validate_authentication(
                 AppError::InvalidInput("Invalid or expired challenge".to_string())
             })?
             .clone();
-
-        if data.issued_at.elapsed().as_secs() > CHALLENGE_EXPIRY_SECS {
-            warn!("Challenge expired: {}", challenge_id);
-            challenges.remove(challenge_id);
-            return Ok(false);
-        }
 
         data
     };
@@ -174,7 +170,7 @@ pub(crate) async fn validate_authentication(
     }
 
     {
-        let mut challenges = ACTIVE_CHALLENGES.lock().unwrap();
+        let mut challenges = ACTIVE_CHALLENGES.lock().unwrap_or_else(|e| e.into_inner());
         challenges.remove(challenge_id);
     }
 
@@ -340,7 +336,7 @@ fn validate_taproot_address_format(address: &str) -> Result<bool, AppError> {
     }
 
     match bech32::decode(address) {
-        Ok((hrp, data)) => Ok(hrp.as_str() == "taprt1" && !data.is_empty()),
+        Ok((hrp, data)) => Ok(hrp.as_str() == "taprt" && !data.is_empty()),
         Err(_) => Ok(false),
     }
 }

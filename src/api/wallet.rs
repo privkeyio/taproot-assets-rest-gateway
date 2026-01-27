@@ -1,4 +1,4 @@
-use super::handle_result;
+use super::{handle_result, validate_hex_param};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
 use actix_web::{web, HttpResponse};
@@ -392,6 +392,9 @@ async fn get_internal_key_handler(
     path: web::Path<String>,
 ) -> HttpResponse {
     let internal_key = path.into_inner();
+    if let Err(e) = validate_hex_param(&internal_key) {
+        return handle_result::<serde_json::Value>(Err(e));
+    }
     handle_result(
         get_internal_key(client.as_ref(), &base_url.0, &macaroon_hex.0, &internal_key).await,
     )
@@ -472,6 +475,9 @@ async fn get_script_key_handler(
     path: web::Path<String>,
 ) -> HttpResponse {
     let tweaked_script_key = path.into_inner();
+    if let Err(e) = validate_hex_param(&tweaked_script_key) {
+        return handle_result::<serde_json::Value>(Err(e));
+    }
     handle_result(
         get_script_key(
             client.as_ref(),

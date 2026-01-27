@@ -45,8 +45,7 @@ async fn stop_handler(
         Err(e) => {
             let status = e.status_code();
             HttpResponse::build(status).json(serde_json::json!({
-                "error": e.to_string(),
-                "type": format!("{:?}", e)
+                "error": e.to_string()
             }))
         }
     }

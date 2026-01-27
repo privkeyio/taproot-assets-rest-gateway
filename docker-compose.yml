@@ -2,10 +2,10 @@ services:
   taproot-assets-rest-gateway:
     container_name: taproot-assets-gateway
     build: .
-    network_mode: host  # Use host networking
+    ports:
+      - "8080:8080"
     environment:
-      # Can use 127.0.0.1 since we're using host networking
-      - TAPROOT_ASSETS_HOST=${TAPROOT_ASSETS_HOST:-127.0.0.1:8289}
+      - TAPROOT_ASSETS_HOST=${TAPROOT_ASSETS_HOST:-host.docker.internal:8289}
       - TAPD_MACAROON_PATH=/app/macaroons/tapd/admin.macaroon
       - LND_MACAROON_PATH=/app/macaroons/lnd/admin.macaroon
       - TLS_VERIFY=${TLS_VERIFY}

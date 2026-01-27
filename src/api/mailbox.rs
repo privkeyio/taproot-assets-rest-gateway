@@ -297,7 +297,11 @@ async fn handle_mailbox_websocket_connection(
                     break;
                 }
 
-                info!("Received mailbox WebSocket message: {}", text);
+                debug!("Received mailbox WebSocket message: {}", text);
+                info!(
+                    "Received mailbox WebSocket message: type=text, len={}",
+                    text.len()
+                );
 
                 // Record message received in monitoring
                 if let Some(ref mon) = monitoring {
@@ -586,7 +590,7 @@ async fn stream_mailbox_messages(
                     messages_array.clone()
                 } else if response_data.is_array() {
                     // Response might be directly an array of messages
-                    response_data.as_array().unwrap().clone()
+                    response_data.as_array().unwrap_or(&vec![]).clone()
                 } else {
                     vec![]
                 };

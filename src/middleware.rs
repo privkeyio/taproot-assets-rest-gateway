@@ -14,6 +14,101 @@ use std::time::{Duration, Instant};
 use tracing::info_span;
 use uuid::Uuid;
 
+pub struct ApiKeyAuth {
+    api_key: Option<String>,
+}
+
+impl ApiKeyAuth {
+    pub fn new(api_key: Option<String>) -> Self {
+        Self { api_key }
+    }
+}
+
+impl<S, B> Transform<S, ServiceRequest> for ApiKeyAuth
+where
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
+    S::Future: 'static,
+    B: 'static,
+{
+    type Response = ServiceResponse<B>;
+    type Error = Error;
+    type InitError = ();
+    type Transform = ApiKeyAuthService<S>;
+    type Future = Ready<Result<Self::Transform, Self::InitError>>;
+
+    fn new_transform(&self, service: S) -> Self::Future {
+        ok(ApiKeyAuthService {
+            service,
+            api_key: self.api_key.clone(),
+        })
+    }
+}
+
+pub struct ApiKeyAuthService<S> {
+    service: S,
+    api_key: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct AuthError;
+
+impl std::fmt::Display for AuthError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Unauthorized")
+    }
+}
+
+impl ResponseError for AuthError {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::UNAUTHORIZED
+    }
+
+    fn error_response(&self) -> HttpResponse {
+        HttpResponse::Unauthorized().json(serde_json::json!({
+            "error": "Unauthorized"
+        }))
+    }
+}
+
+impl<S, B> Service<ServiceRequest> for ApiKeyAuthService<S>
+where
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
+    S::Future: 'static,
+    B: 'static,
+{
+    type Response = ServiceResponse<B>;
+    type Error = Error;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
+
+    fn poll_ready(&self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.service.poll_ready(cx)
+    }
+
+    fn call(&self, req: ServiceRequest) -> Self::Future {
+        if req.path() == "/health" {
+            let fut = self.service.call(req);
+            return Box::pin(fut);
+        }
+
+        if let Some(ref expected_key) = self.api_key {
+            let authorized = req
+                .headers()
+                .get("Authorization")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.strip_prefix("Bearer "))
+                .map(|token| token == expected_key)
+                .unwrap_or(false);
+
+            if !authorized {
+                return Box::pin(async { Err(AuthError.into()) });
+            }
+        }
+
+        let fut = self.service.call(req);
+        Box::pin(fut)
+    }
+}
+
 // Request ID Middleware
 pub struct RequestIdMiddleware;
 
@@ -175,19 +270,18 @@ where
     fn call(&self, req: ServiceRequest) -> Self::Future {
         // Get client identifier (IP address or authenticated user)
         let client_id = req
-            .connection_info()
-            .realip_remote_addr()
-            .unwrap_or("unknown")
-            .to_string();
+            .peer_addr()
+            .map(|addr| addr.ip().to_string())
+            .unwrap_or_else(|| "unknown".to_string());
 
         let now = Instant::now();
         let window_start = now - Duration::from_secs(60);
 
         // Clean up old entries periodically
         {
-            let mut last_cleanup = self.last_cleanup.lock().unwrap();
+            let mut last_cleanup = self.last_cleanup.lock().unwrap_or_else(|e| e.into_inner());
             if now.duration_since(*last_cleanup) > self.cleanup_interval {
-                let mut store = self.store.lock().unwrap();
+                let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
                 store.retain(|_, timestamps| {
                     timestamps.retain(|t| *t > window_start);
                     !timestamps.is_empty()
@@ -198,7 +292,7 @@ where
 
         // Check rate limit
         {
-            let mut store = self.store.lock().unwrap();
+            let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
 
             if !store.contains_key(&client_id) && store.len() >= self.max_tracked_ips {
                 return Box::pin(async { Err(RateLimitError.into()) });
