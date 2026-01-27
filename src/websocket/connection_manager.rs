@@ -143,7 +143,6 @@ impl WebSocketConnectionManager {
             Connector::NativeTls(
                 native_tls::TlsConnector::builder()
                     .danger_accept_invalid_certs(true)
-                    .danger_accept_invalid_hostnames(true)
                     .build()
                     .map_err(|e| AppError::WebSocketError(format!("TLS error: {e}")))?,
             )

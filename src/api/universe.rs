@@ -1,3 +1,4 @@
+use super::{handle_result, validate_hex_param, validate_integer_param};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
 use actix_web::{web, HttpResponse};
@@ -478,6 +479,9 @@ async fn keys_handler(
     path: web::Path<String>,
 ) -> HttpResponse {
     let asset_id = path.into_inner();
+    if let Err(e) = validate_hex_param(&asset_id) {
+        return handle_result::<serde_json::Value>(Err(e));
+    }
     handle_result(get_keys(client.as_ref(), &base_url.0, &macaroon_hex.0, &asset_id).await)
 }
 
@@ -488,6 +492,9 @@ async fn leaves_handler(
     path: web::Path<String>,
 ) -> HttpResponse {
     let asset_id = path.into_inner();
+    if let Err(e) = validate_hex_param(&asset_id) {
+        return handle_result::<serde_json::Value>(Err(e));
+    }
     handle_result(get_leaves(client.as_ref(), &base_url.0, &macaroon_hex.0, &asset_id).await)
 }
 
@@ -515,6 +522,13 @@ async fn proofs_handler(
     macaroon_hex: web::Data<MacaroonHex>,
 ) -> HttpResponse {
     let (asset_id, hash_str, index, script_key) = path.into_inner();
+    if let Err(e) = validate_hex_param(&asset_id)
+        .and_then(|_| validate_hex_param(&hash_str))
+        .and_then(|_| validate_integer_param(&index))
+        .and_then(|_| validate_hex_param(&script_key))
+    {
+        return handle_result::<serde_json::Value>(Err(e));
+    }
     handle_result(
         get_proofs(
             client.as_ref(),
@@ -537,6 +551,13 @@ async fn push_proof_handler(
     req: web::Json<PushProofRequest>,
 ) -> HttpResponse {
     let (asset_id, hash_str, index, script_key) = path.into_inner();
+    if let Err(e) = validate_hex_param(&asset_id)
+        .and_then(|_| validate_hex_param(&hash_str))
+        .and_then(|_| validate_integer_param(&index))
+        .and_then(|_| validate_hex_param(&script_key))
+    {
+        return handle_result::<serde_json::Value>(Err(e));
+    }
     handle_result(
         push_proof(
             client.as_ref(),
@@ -567,6 +588,9 @@ async fn asset_roots_handler(
     path: web::Path<String>,
 ) -> HttpResponse {
     let asset_id = path.into_inner();
+    if let Err(e) = validate_hex_param(&asset_id) {
+        return handle_result::<serde_json::Value>(Err(e));
+    }
     handle_result(get_asset_roots(client.as_ref(), &base_url.0, &macaroon_hex.0, &asset_id).await)
 }
 
@@ -634,19 +658,6 @@ async fn get_sync_config_handler(
     macaroon_hex: web::Data<MacaroonHex>,
 ) -> HttpResponse {
     handle_result(get_sync_config(client.as_ref(), &base_url.0, &macaroon_hex.0).await)
-}
-
-fn handle_result<T: serde::Serialize>(result: Result<T, AppError>) -> HttpResponse {
-    match result {
-        Ok(value) => HttpResponse::Ok().json(value),
-        Err(e) => {
-            let status = e.status_code();
-            HttpResponse::build(status).json(serde_json::json!({
-                "error": e.to_string(),
-                "type": format!("{:?}", e)
-            }))
-        }
-    }
 }
 
 pub fn configure(cfg: &mut web::ServiceConfig) {

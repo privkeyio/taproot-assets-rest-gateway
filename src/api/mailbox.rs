@@ -1,22 +1,17 @@
-use crate::crypto::{
-    derive_public_key_from_receiver_id, verify_schnorr_signature, verify_signature,
-};
-use crate::database::{ReceiverInfo, SharedDatabase};
+use super::handle_result;
+use super::mailbox_auth::{generate_challenge, validate_authentication};
+use crate::database::SharedDatabase;
 use crate::error::AppError;
 use crate::monitoring::SharedMonitoring;
 use crate::types::{BaseUrl, MacaroonHex};
 use crate::websocket::proxy_handler::WebSocketProxyHandler;
 use actix_web::{web, HttpRequest, HttpResponse, Result as ActixResult};
 use actix_ws::{Message, MessageStream, Session};
-use base64::Engine;
-use bitcoin::bech32;
-use chrono::Utc;
 use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::time::timeout;
 use tracing::{debug, error, info, instrument, warn};
 
@@ -48,24 +43,9 @@ struct ConnectionLimits {
     last_reset: Instant,
 }
 
-#[derive(Debug, Clone)]
-struct ChallengeData {
-    challenge_id: String,
-    timestamp: i64,
-    nonce: String,
-    issued_at: Instant,
-}
-
-lazy_static::lazy_static! {
-    static ref ACTIVE_CHALLENGES: Mutex<HashMap<String, ChallengeData>> = Mutex::new(HashMap::new());
-}
-
-const IDLE_TIMEOUT_SECS: u64 = 300; // 5 minutes
+const IDLE_TIMEOUT_SECS: u64 = 300;
 const RATE_LIMIT_MESSAGES_PER_MINUTE: u32 = 60;
-const MAX_MESSAGE_SIZE_BYTES: usize = 64 * 1024; // 64KB
-const CHALLENGE_EXPIRY_SECS: u64 = 300; // 5 minutes
-const TIMESTAMP_TOLERANCE_SECS: i64 = 30; // 30 seconds tolerance for clock skew
-const MAX_ACTIVE_CHALLENGES: usize = 10_000;
+const MAX_MESSAGE_SIZE_BYTES: usize = 64 * 1024;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct WebSocketMailboxMessage {
@@ -317,7 +297,11 @@ async fn handle_mailbox_websocket_connection(
                     break;
                 }
 
-                info!("Received mailbox WebSocket message: {}", text);
+                debug!("Received mailbox WebSocket message: {}", text);
+                info!(
+                    "Received mailbox WebSocket message: type=text, len={}",
+                    text.len()
+                );
 
                 // Record message received in monitoring
                 if let Some(ref mon) = monitoring {
@@ -549,456 +533,6 @@ async fn handle_mailbox_message(
     }
 }
 
-async fn generate_challenge() -> Result<serde_json::Value, AppError> {
-    let challenge_id = uuid::Uuid::new_v4().to_string();
-    let timestamp = chrono::Utc::now().timestamp();
-    let nonce = base64::engine::general_purpose::STANDARD.encode(uuid::Uuid::new_v4().as_bytes());
-
-    // Store challenge data for later verification
-    let challenge_data = ChallengeData {
-        challenge_id: challenge_id.clone(),
-        timestamp,
-        nonce: nonce.clone(),
-        issued_at: Instant::now(),
-    };
-
-    {
-        let mut challenges = ACTIVE_CHALLENGES.lock().unwrap();
-
-        // Clean up expired challenges
-        challenges.retain(|_, data| data.issued_at.elapsed().as_secs() < CHALLENGE_EXPIRY_SECS);
-
-        if challenges.len() >= MAX_ACTIVE_CHALLENGES {
-            return Err(AppError::ValidationError(
-                "Too many pending challenges. Please try again later.".to_string(),
-            ));
-        }
-
-        challenges.insert(challenge_id.clone(), challenge_data);
-    }
-
-    Ok(serde_json::json!({
-        "challenge_id": challenge_id,
-        "timestamp": timestamp,
-        "nonce": nonce,
-        "message": format!("Sign this challenge: {}-{}-{}", challenge_id, timestamp, nonce)
-    }))
-}
-
-async fn validate_authentication(
-    init: &serde_json::Value,
-    auth_sig: &serde_json::Value,
-    client: &Client,
-    base_url: &str,
-    macaroon_hex: &str,
-    database: Option<&SharedDatabase>,
-) -> Result<bool, AppError> {
-    // Extract required fields from init data
-    let receiver_id = init
-        .get("receiver_id")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| AppError::InvalidInput("Missing receiver_id in init data".to_string()))?;
-
-    // Extract signature and challenge_id from auth_sig
-    let signature = auth_sig
-        .get("signature")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| AppError::InvalidInput("Missing signature in auth_sig".to_string()))?;
-
-    let challenge_id = auth_sig
-        .get("challenge_id")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| AppError::InvalidInput("Missing challenge_id in auth_sig".to_string()))?;
-
-    let signed_timestamp = auth_sig
-        .get("timestamp")
-        .and_then(|v| v.as_i64())
-        .ok_or_else(|| AppError::InvalidInput("Missing timestamp in auth_sig".to_string()))?;
-
-    // Basic validation
-    if signature.is_empty() || signature.len() < 32 {
-        warn!("Invalid signature format: too short");
-        return Ok(false);
-    }
-
-    if receiver_id.is_empty() {
-        warn!("Invalid receiver_id: empty");
-        return Ok(false);
-    }
-
-    // Validate signature encoding (should be hex or base64)
-    if !signature.chars().all(|c| c.is_ascii_hexdigit())
-        && base64::engine::general_purpose::STANDARD
-            .decode(signature)
-            .is_err()
-    {
-        warn!("Invalid signature encoding: not hex or base64");
-        return Ok(false);
-    }
-
-    // 1. Verify challenge exists and is valid
-    let challenge_data = {
-        let mut challenges = ACTIVE_CHALLENGES.lock().unwrap();
-        let data = challenges
-            .get(challenge_id)
-            .ok_or_else(|| {
-                warn!("Challenge not found: {}", challenge_id);
-                AppError::InvalidInput("Invalid or expired challenge".to_string())
-            })?
-            .clone();
-
-        // Check if challenge has expired
-        if data.issued_at.elapsed().as_secs() > CHALLENGE_EXPIRY_SECS {
-            warn!("Challenge expired: {}", challenge_id);
-            challenges.remove(challenge_id);
-            return Ok(false);
-        }
-
-        data
-    };
-
-    // 2. Validate timestamp to prevent replay attacks
-    let current_time = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|_| AppError::InvalidInput("System time error".to_string()))?
-        .as_secs() as i64;
-
-    let time_diff = (current_time - signed_timestamp).abs();
-    if time_diff > TIMESTAMP_TOLERANCE_SECS {
-        warn!(
-            "Timestamp validation failed: time difference {} seconds exceeds tolerance",
-            time_diff
-        );
-        return Ok(false);
-    }
-
-    // Ensure the signed timestamp matches the challenge timestamp (within tolerance)
-    let challenge_time_diff = (challenge_data.timestamp - signed_timestamp).abs();
-    if challenge_time_diff > TIMESTAMP_TOLERANCE_SECS {
-        warn!(
-            "Challenge timestamp mismatch: difference {} seconds",
-            challenge_time_diff
-        );
-        return Ok(false);
-    }
-
-    // 3. Verify the signature cryptographically against the challenge
-    let expected_message = format!(
-        "Sign this challenge: {}-{}-{}",
-        challenge_data.challenge_id, challenge_data.timestamp, challenge_data.nonce
-    );
-
-    if !verify_signature_with_receiver(&expected_message, signature, receiver_id, database).await? {
-        warn!("Cryptographic signature verification failed");
-        return Ok(false);
-    }
-
-    // 4. Test connectivity to backend and validate macaroon permissions
-    if !validate_macaroon_permissions(client, base_url, macaroon_hex, receiver_id).await? {
-        warn!("Macaroon permission validation failed");
-        return Ok(false);
-    }
-
-    // 5. Validate receiver_id exists and is accessible
-    if !validate_receiver_id(receiver_id, client, base_url, macaroon_hex, database).await? {
-        warn!("Receiver ID validation failed: {}", receiver_id);
-        return Ok(false);
-    }
-
-    // Remove used challenge to prevent replay
-    {
-        let mut challenges = ACTIVE_CHALLENGES.lock().unwrap();
-        challenges.remove(challenge_id);
-    }
-
-    // Store receiver info in database if available
-    if let Some(db) = database {
-        // Try to extract public key from auth_sig or receiver_id
-        let public_key = if let Some(pk) = auth_sig.get("public_key").and_then(|v| v.as_str()) {
-            pk.to_string()
-        } else if let Some(pk) = derive_public_key_from_receiver_id(receiver_id)? {
-            pk
-        } else {
-            // Generate a placeholder if we can't determine the actual public key
-            format!("unknown_{receiver_id}")
-        };
-
-        let receiver_info = ReceiverInfo {
-            receiver_id: receiver_id.to_string(),
-            public_key,
-            address: init
-                .get("address")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            created_at: Utc::now().timestamp(),
-            last_seen: Utc::now().timestamp(),
-            is_active: true,
-            metadata: Some(serde_json::json!({
-                "auth_method": "mailbox",
-                "last_challenge_id": challenge_id,
-            })),
-        };
-
-        if let Err(e) = db.store_receiver_info(&receiver_info).await {
-            warn!("Failed to store receiver info in database: {}", e);
-            // Don't fail authentication if we can't store in database
-        }
-    }
-
-    info!(
-        "Authentication successfully validated for receiver_id: {}",
-        receiver_id
-    );
-    Ok(true)
-}
-
-async fn verify_signature_with_receiver(
-    message: &str,
-    signature: &str,
-    receiver_id: &str,
-    database: Option<&SharedDatabase>,
-) -> Result<bool, AppError> {
-    // First check if receiver_id is directly a public key
-    if let Some(public_key) = derive_public_key_from_receiver_id(receiver_id)? {
-        // Try Schnorr signature first (for Taproot compatibility)
-        if public_key.len() == 64 {
-            // X-only public key (32 bytes hex) - use Schnorr
-            return verify_schnorr_signature(message, signature, &public_key);
-        } else {
-            // Regular public key - use ECDSA
-            return verify_signature(message, signature, &public_key);
-        }
-    }
-
-    // If not a direct public key, look it up in the database
-    if let Some(db) = database {
-        if let Some(receiver_info) = db.get_receiver_info(receiver_id).await? {
-            // Try Schnorr first for Taproot addresses
-            if receiver_info.public_key.len() == 64 {
-                return verify_schnorr_signature(message, signature, &receiver_info.public_key);
-            } else {
-                return verify_signature(message, signature, &receiver_info.public_key);
-            }
-        }
-    }
-
-    // If we can't find the public key, we can't verify the signature
-    warn!("Unable to find public key for receiver_id: {}", receiver_id);
-    Ok(false)
-}
-
-async fn validate_macaroon_permissions(
-    client: &Client,
-    base_url: &str,
-    macaroon_hex: &str,
-    receiver_id: &str,
-) -> Result<bool, AppError> {
-    // Test general connectivity and macaroon validity
-    let info_url = format!("{base_url}/v1/taproot-assets/mailbox/info");
-    let info_response = client
-        .get(&info_url)
-        .header("Grpc-Metadata-macaroon", macaroon_hex)
-        .timeout(Duration::from_secs(5))
-        .send()
-        .await
-        .map_err(|e| {
-            error!("Failed to validate macaroon with backend: {}", e);
-            AppError::RequestError(e)
-        })?;
-
-    if !info_response.status().is_success() {
-        warn!(
-            "Macaroon validation failed with status: {}",
-            info_response.status()
-        );
-        return Ok(false);
-    }
-
-    // Parse response to check mailbox feature availability
-    let info_json = info_response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)?;
-
-    // Check if mailbox is enabled
-    if let Some(mailbox_enabled) = info_json.get("mailbox_enabled").and_then(|v| v.as_bool()) {
-        if !mailbox_enabled {
-            warn!("Mailbox feature is not enabled on the backend");
-            return Ok(false);
-        }
-    }
-
-    // Test mailbox-specific permissions by attempting a minimal receive operation
-    let test_receive = ReceiveRequest {
-        init: serde_json::json!({
-            "receiver_id": receiver_id,
-            "test": true
-        }),
-        auth_sig: serde_json::json!({
-            "test": true
-        }),
-    };
-
-    let receive_url = format!("{base_url}/v1/taproot-assets/mailbox/receive");
-    let receive_response = client
-        .post(&receive_url)
-        .header("Grpc-Metadata-macaroon", macaroon_hex)
-        .json(&test_receive)
-        .timeout(Duration::from_secs(2))
-        .send()
-        .await;
-
-    match receive_response {
-        Ok(resp) => {
-            // We expect either success or a specific error indicating permission
-            // 403 Forbidden means no permission, other errors might be OK
-            if resp.status() == reqwest::StatusCode::FORBIDDEN {
-                warn!("Macaroon lacks mailbox receive permissions");
-                return Ok(false);
-            }
-            // Other statuses (including errors) are acceptable for permission check
-        }
-        Err(e) if e.is_timeout() => {
-            // Timeout is OK, we're just checking permissions
-            debug!("Permission check timed out, assuming permissions are valid");
-        }
-        Err(e) => {
-            // Connection errors might indicate backend issues, not permission issues
-            warn!("Failed to check mailbox permissions: {}", e);
-        }
-    }
-
-    info!(
-        "Macaroon permissions validated for receiver_id: {}",
-        receiver_id
-    );
-    Ok(true)
-}
-
-fn is_valid_bech32_chars(s: &str) -> bool {
-    const BECH32_CHARSET: &[u8] = b"qpzry9x8gf2tvdw0s3jn54khce6mua7l";
-    s.chars()
-        .all(|c| c.is_ascii_lowercase() && BECH32_CHARSET.contains(&(c as u8)))
-}
-
-fn validate_taproot_address_format(address: &str) -> Result<bool, AppError> {
-    if !address.starts_with("taprt1") {
-        return Ok(false);
-    }
-
-    let data_part = &address[6..]; // Remove "taprt1" prefix
-
-    // Check if it contains only valid Bech32 characters
-    if !is_valid_bech32_chars(data_part) {
-        return Ok(false);
-    }
-
-    // Attempt to decode using bech32
-    match bech32::decode(address) {
-        Ok((hrp, data)) => {
-            // Verify it's a taproot address with correct HRP
-            Ok(hrp.as_str() == "taprt1" && !data.is_empty())
-        }
-        Err(_) => Ok(false),
-    }
-}
-
-async fn validate_receiver_id(
-    receiver_id: &str,
-    client: &Client,
-    base_url: &str,
-    macaroon_hex: &str,
-    database: Option<&SharedDatabase>,
-) -> Result<bool, AppError> {
-    // Basic format validation
-    if receiver_id.len() < 8 {
-        warn!("Receiver ID too short: {}", receiver_id);
-        return Ok(false);
-    }
-
-    // First check if it's a potential Taproot address format - validate Bech32 characters
-    if !is_valid_bech32_chars(receiver_id) {
-        // If not valid Bech32 chars, check if it's alphanumeric format
-        if !receiver_id
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
-        {
-            warn!("Receiver ID contains invalid characters: {}", receiver_id);
-            return Ok(false);
-        }
-    }
-
-    // Check if it's a public key format
-    if (derive_public_key_from_receiver_id(receiver_id)?).is_some() {
-        // If it's a valid public key format, it's valid
-        info!("Receiver ID is a valid public key: {}", receiver_id);
-        return Ok(true);
-    }
-
-    // Check database if available
-    if let Some(db) = database {
-        if let Some(receiver_info) = db.get_receiver_info(receiver_id).await? {
-            if receiver_info.is_active {
-                info!(
-                    "Receiver ID found in database and is active: {}",
-                    receiver_id
-                );
-                return Ok(true);
-            } else {
-                warn!("Receiver ID found but is inactive: {}", receiver_id);
-                return Ok(false);
-            }
-        }
-    }
-
-    // Attempt to validate against tapd backend by checking if an address exists
-    // This is done by trying to decode a taproot address associated with the receiver
-    let decode_url = format!("{base_url}/v1/taproot-assets/addrs/decode");
-    let test_address = format!("taprt1{receiver_id}"); // Construct a test address
-
-    // First validate the constructed address format locally
-    match validate_taproot_address_format(&test_address) {
-        Ok(true) => {
-            // Address format is valid, proceed with remote validation
-            let response = client
-                .post(&decode_url)
-                .header("Grpc-Metadata-macaroon", macaroon_hex)
-                .json(&serde_json::json!({"addr": test_address}))
-                .timeout(Duration::from_secs(2))
-                .send()
-                .await;
-
-            match response {
-                Ok(resp) if resp.status().is_success() => {
-                    info!("Receiver ID validated via tapd backend: {}", receiver_id);
-                    Ok(true)
-                }
-                _ => {
-                    // If remote validation fails but local format is valid, reject it
-                    // This prevents accepting addresses that don't exist on the backend
-                    warn!(
-                        "Receiver ID has valid format but failed backend validation: {}",
-                        receiver_id
-                    );
-                    Ok(false)
-                }
-            }
-        }
-        Ok(false) => {
-            // Invalid Taproot address format
-            warn!(
-                "Receiver ID does not form a valid Taproot address: {}",
-                receiver_id
-            );
-            Ok(false)
-        }
-        Err(e) => {
-            warn!("Error validating Taproot address format: {}", e);
-            Ok(false)
-        }
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 async fn stream_mailbox_messages(
     client: &Client,
@@ -1056,7 +590,7 @@ async fn stream_mailbox_messages(
                     messages_array.clone()
                 } else if response_data.is_array() {
                     // Response might be directly an array of messages
-                    response_data.as_array().unwrap().clone()
+                    response_data.as_array().unwrap_or(&vec![]).clone()
                 } else {
                     vec![]
                 };
@@ -1180,19 +714,6 @@ async fn stream_mailbox_messages(
         message_count
     );
     Ok(())
-}
-
-fn handle_result<T: serde::Serialize>(result: Result<T, AppError>) -> HttpResponse {
-    match result {
-        Ok(value) => HttpResponse::Ok().json(value),
-        Err(e) => {
-            let status = e.status_code();
-            HttpResponse::build(status).json(serde_json::json!({
-                "error": e.to_string(),
-                "type": format!("{:?}", e)
-            }))
-        }
-    }
 }
 
 async fn receive_websocket_with_proxy(
