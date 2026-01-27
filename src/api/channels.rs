@@ -1,3 +1,4 @@
+use super::handle_result;
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
 use crate::websocket::proxy_handler::WebSocketProxyHandler;
@@ -291,19 +292,6 @@ async fn send_payment_handler(
         )
         .await,
     )
-}
-
-fn handle_result<T: serde::Serialize>(result: Result<T, AppError>) -> HttpResponse {
-    match result {
-        Ok(value) => HttpResponse::Ok().json(value),
-        Err(e) => {
-            let status = e.status_code();
-            HttpResponse::build(status).json(serde_json::json!({
-                "error": e.to_string(),
-                "type": format!("{:?}", e)
-            }))
-        }
-    }
 }
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
