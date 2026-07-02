@@ -2,7 +2,8 @@ use actix_web::{test, App};
 use serde_json::{json, Value};
 use serial_test::serial;
 use taproot_assets_rest_gateway::api::rfq::{
-    BuyOfferRequest, BuyOrderRequest, SellOfferRequest, SellOrderRequest,
+    BuyOfferRequest, BuyOrderRequest, QueryAssetRatesRequest, ResolveRequestRequest,
+    SellOfferRequest, SellOrderRequest, VerifyAcceptQuoteRequest,
 };
 use taproot_assets_rest_gateway::api::routes::configure;
 use taproot_assets_rest_gateway::tests::setup::{mint_test_asset, setup, setup_without_assets};
@@ -331,6 +332,105 @@ async fn test_get_asset_rates() {
         assert!(error_resp["message"].is_string());
         assert!(error_resp["code"].is_number());
     }
+}
+
+#[actix_rt::test]
+async fn test_portfoliopilot_query_asset_rates() {
+    let (client, base_url, macaroon_hex) = setup_without_assets().await;
+    let app = test::init_service(
+        App::new()
+            .app_data(client.clone())
+            .app_data(base_url.clone())
+            .app_data(macaroon_hex.clone())
+            .configure(configure),
+    )
+    .await;
+
+    info!("Testing portfoliopilot query asset rates");
+
+    let request = QueryAssetRatesRequest {
+        asset_specifier: Some(json!({
+            "asset_id_str": "0000000000000000000000000000000000000000000000000000000000000001"
+        })),
+        direction: None,
+        intent: None,
+        asset_amount: Some("1000".to_string()),
+        payment_amount: None,
+        asset_rate_hint: None,
+        price_oracle_metadata: None,
+        peer_id: None,
+        expiry_timestamp: None,
+    };
+
+    let req = test::TestRequest::post()
+        .uri("/v1/taproot-assets/rfq/portfoliopilot/assetrates")
+        .set_json(&request)
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert!(resp.status().is_success());
+
+    let json: Value = test::read_body_json(resp).await;
+    info!("Portfoliopilot asset rates response: {:?}", json);
+    assert!(json.is_object());
+}
+
+#[actix_rt::test]
+async fn test_portfoliopilot_resolve_request() {
+    let (client, base_url, macaroon_hex) = setup_without_assets().await;
+    let app = test::init_service(
+        App::new()
+            .app_data(client.clone())
+            .app_data(base_url.clone())
+            .app_data(macaroon_hex.clone())
+            .configure(configure),
+    )
+    .await;
+
+    info!("Testing portfoliopilot resolve request");
+
+    let request = ResolveRequestRequest {
+        buy_request: None,
+        sell_request: None,
+    };
+
+    let req = test::TestRequest::post()
+        .uri("/v1/taproot-assets/rfq/portfoliopilot/resolve")
+        .set_json(&request)
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert!(resp.status().is_success());
+
+    let json: Value = test::read_body_json(resp).await;
+    info!("Portfoliopilot resolve response: {:?}", json);
+    assert!(json.is_object());
+}
+
+#[actix_rt::test]
+async fn test_portfoliopilot_verify_accept_quote() {
+    let (client, base_url, macaroon_hex) = setup_without_assets().await;
+    let app = test::init_service(
+        App::new()
+            .app_data(client.clone())
+            .app_data(base_url.clone())
+            .app_data(macaroon_hex.clone())
+            .configure(configure),
+    )
+    .await;
+
+    info!("Testing portfoliopilot verify accept quote");
+
+    let request = VerifyAcceptQuoteRequest { accept: json!({}) };
+
+    let req = test::TestRequest::post()
+        .uri("/v1/taproot-assets/rfq/portfoliopilot/verify")
+        .set_json(&request)
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert!(resp.status().is_success());
+
+    let json: Value = test::read_body_json(resp).await;
+    info!("Portfoliopilot verify response: {:?}", json);
+    assert!(json.is_object());
 }
 
 #[actix_rt::test]

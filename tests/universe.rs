@@ -3,7 +3,8 @@ use serde_json::{json, Value};
 use serial_test::serial;
 use taproot_assets_rest_gateway::api::routes::configure;
 use taproot_assets_rest_gateway::api::universe::{
-    FederationRequest, MultiverseRequest, PushProofRequest, SyncConfigRequest, SyncRequest,
+    FederationRequest, IgnoreAssetOutPointRequest, InsertSupplyCommitRequest, MultiverseRequest,
+    PushProofRequest, SyncConfigRequest, SyncRequest, UpdateSupplyCommitRequest,
 };
 use taproot_assets_rest_gateway::tests::setup::{mint_test_asset, setup, setup_without_assets};
 use tokio::time::{sleep, Duration};
@@ -880,4 +881,196 @@ async fn test_sync_modes() {
     )
     .await;
     assert!(full_resp.status().is_success() || full_resp.status().is_client_error());
+}
+
+#[actix_rt::test]
+async fn test_fetch_supply_commit() {
+    let (client, base_url, macaroon_hex) = setup_without_assets().await;
+    let app = test::init_service(
+        App::new()
+            .app_data(client.clone())
+            .app_data(base_url.clone())
+            .app_data(macaroon_hex.clone())
+            .configure(configure),
+    )
+    .await;
+
+    let group_key = format!("02{}", "0".repeat(64));
+
+    let req = test::TestRequest::get()
+        .uri(&format!(
+            "/v1/taproot-assets/universe/supply/{group_key}?latest=true"
+        ))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert!(resp.status().is_success());
+
+    let json: Value = test::read_body_json(resp).await;
+    if json.get("error").is_some() || json.get("code").is_some() {
+        println!("Fetch supply commit returned error: {json:?}");
+    } else {
+        assert!(json.is_object());
+    }
+}
+
+#[actix_rt::test]
+async fn test_insert_supply_commit() {
+    let (client, base_url, macaroon_hex) = setup_without_assets().await;
+    let app = test::init_service(
+        App::new()
+            .app_data(client.clone())
+            .app_data(base_url.clone())
+            .app_data(macaroon_hex.clone())
+            .configure(configure),
+    )
+    .await;
+
+    let group_key = format!("02{}", "0".repeat(64));
+
+    let request = InsertSupplyCommitRequest {
+        group_key_bytes: None,
+        chain_data: None,
+        spent_commitment_outpoint: None,
+        issuance_leaves: None,
+        burn_leaves: None,
+        ignore_leaves: None,
+    };
+
+    let req = test::TestRequest::post()
+        .uri(&format!("/v1/taproot-assets/universe/supply/{group_key}"))
+        .set_json(&request)
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert!(resp.status().is_success());
+
+    let json: Value = test::read_body_json(resp).await;
+    if json.get("error").is_some() || json.get("code").is_some() {
+        println!("Insert supply commit returned error: {json:?}");
+    } else {
+        assert!(json.is_object());
+    }
+}
+
+#[actix_rt::test]
+async fn test_ignore_asset_outpoint() {
+    let (client, base_url, macaroon_hex) = setup_without_assets().await;
+    let app = test::init_service(
+        App::new()
+            .app_data(client.clone())
+            .app_data(base_url.clone())
+            .app_data(macaroon_hex.clone())
+            .configure(configure),
+    )
+    .await;
+
+    let request = IgnoreAssetOutPointRequest {
+        asset_out_point: json!({
+            "asset_id": "0000000000000000000000000000000000000000000000000000000000000001",
+            "anchor_out_point": {
+                "txid": "0000000000000000000000000000000000000000000000000000000000000000",
+                "output_index": 0
+            }
+        }),
+        amount: Some("1".to_string()),
+    };
+
+    // The static /supply/ignore route must match, not the /supply/{group_key_str} param
+    // route (which would reject "ignore" as an invalid hex path parameter).
+    let req = test::TestRequest::post()
+        .uri("/v1/taproot-assets/universe/supply/ignore")
+        .set_json(&request)
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert!(resp.status().is_success());
+
+    let json: Value = test::read_body_json(resp).await;
+    if json.get("error").is_some() || json.get("code").is_some() {
+        println!("Ignore asset outpoint returned error: {json:?}");
+    } else {
+        assert!(json.is_object());
+    }
+}
+
+#[actix_rt::test]
+async fn test_fetch_supply_leaves() {
+    let (client, base_url, macaroon_hex) = setup_without_assets().await;
+    let app = test::init_service(
+        App::new()
+            .app_data(client.clone())
+            .app_data(base_url.clone())
+            .app_data(macaroon_hex.clone())
+            .configure(configure),
+    )
+    .await;
+
+    let group_key = format!("02{}", "0".repeat(64));
+
+    let req = test::TestRequest::get()
+        .uri(&format!(
+            "/v1/taproot-assets/universe/supply/leaves/{group_key}?block_height_start=0"
+        ))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert!(resp.status().is_success());
+
+    let json: Value = test::read_body_json(resp).await;
+    if json.get("error").is_some() || json.get("code").is_some() {
+        println!("Fetch supply leaves returned error: {json:?}");
+    } else {
+        assert!(json.is_object());
+    }
+}
+
+#[actix_rt::test]
+async fn test_update_supply_commit() {
+    let (client, base_url, macaroon_hex) = setup_without_assets().await;
+    let app = test::init_service(
+        App::new()
+            .app_data(client.clone())
+            .app_data(base_url.clone())
+            .app_data(macaroon_hex.clone())
+            .configure(configure),
+    )
+    .await;
+
+    let group_key = format!("02{}", "0".repeat(64));
+
+    let request = UpdateSupplyCommitRequest {
+        group_key_bytes: None,
+    };
+
+    let req = test::TestRequest::post()
+        .uri(&format!(
+            "/v1/taproot-assets/universe/supply/update/{group_key}"
+        ))
+        .set_json(&request)
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert!(resp.status().is_success());
+
+    let json: Value = test::read_body_json(resp).await;
+    if json.get("error").is_some() || json.get("code").is_some() {
+        println!("Update supply commit returned error: {json:?}");
+    } else {
+        assert!(json.is_object());
+    }
+}
+
+#[actix_rt::test]
+async fn test_fetch_supply_commit_invalid_group_key() {
+    let (client, base_url, macaroon_hex) = setup_without_assets().await;
+    let app = test::init_service(
+        App::new()
+            .app_data(client.clone())
+            .app_data(base_url.clone())
+            .app_data(macaroon_hex.clone())
+            .configure(configure),
+    )
+    .await;
+
+    let req = test::TestRequest::get()
+        .uri("/v1/taproot-assets/universe/supply/not-hex")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert!(resp.status().is_client_error());
 }

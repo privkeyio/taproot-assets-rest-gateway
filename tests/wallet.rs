@@ -4,8 +4,8 @@ use serde_json::{json, Value};
 use serial_test::serial;
 use taproot_assets_rest_gateway::api::routes::configure;
 use taproot_assets_rest_gateway::api::wallet::{
-    InternalKeyRequest, OwnershipProveRequest, OwnershipVerifyRequest, ScriptKeyRequest,
-    UtxoLeaseDeleteRequest,
+    ExportBackupRequest, ImportBackupRequest, InternalKeyRequest, OwnershipProveRequest,
+    OwnershipVerifyRequest, ScriptKeyRequest, UtxoLeaseDeleteRequest,
 };
 use taproot_assets_rest_gateway::tests::setup::{mint_test_asset, setup, setup_without_assets};
 
@@ -617,6 +617,74 @@ async fn test_ownership_proof_with_invalid_challenge() {
                 }
             }
         }
+    }
+}
+
+#[actix_rt::test]
+async fn test_export_asset_wallet_backup() {
+    let (client, base_url, macaroon_hex) = setup_without_assets().await;
+    let app = test::init_service(
+        App::new()
+            .app_data(client.clone())
+            .app_data(base_url.clone())
+            .app_data(macaroon_hex.clone())
+            .configure(configure),
+    )
+    .await;
+
+    let request = ExportBackupRequest { mode: None };
+
+    let req = test::TestRequest::post()
+        .uri("/v1/taproot-assets/wallet/backup/export")
+        .set_json(&request)
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert!(resp.status().is_success());
+
+    let json: Value = test::read_body_json(resp).await;
+
+    // Check if it's an error response
+    if json.get("error").is_some() || json.get("code").is_some() {
+        println!("Export wallet backup returned error: {json:?}");
+        // This is expected if the daemon has no assets to back up
+    } else {
+        assert!(json.is_object());
+    }
+}
+
+#[actix_rt::test]
+async fn test_import_assets_from_backup() {
+    let (client, base_url, macaroon_hex) = setup_without_assets().await;
+    let app = test::init_service(
+        App::new()
+            .app_data(client.clone())
+            .app_data(base_url.clone())
+            .app_data(macaroon_hex.clone())
+            .configure(configure),
+    )
+    .await;
+
+    let request = ImportBackupRequest {
+        backup: base64::engine::general_purpose::STANDARD.encode(b"invalid backup"),
+    };
+
+    let req = test::TestRequest::post()
+        .uri("/v1/taproot-assets/wallet/backup/import")
+        .set_json(&request)
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    // The API returns 200 OK even for errors
+    assert!(resp.status().is_success());
+
+    let json: Value = test::read_body_json(resp).await;
+
+    // Check if it's an error response
+    if json.get("error").is_some() || json.get("code").is_some() {
+        println!("Import assets from backup returned error: {json:?}");
+        // This is expected for an invalid backup payload
+    } else {
+        assert!(json.is_object());
     }
 }
 

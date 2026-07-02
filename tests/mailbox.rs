@@ -124,6 +124,37 @@ async fn test_receive_messages_flow() {
 }
 
 #[actix_rt::test]
+async fn test_remove_message() {
+    let (client, base_url, macaroon_hex) = setup_without_assets().await;
+    let app = test::init_service(
+        App::new()
+            .app_data(client.clone())
+            .app_data(base_url.clone())
+            .app_data(macaroon_hex.clone())
+            .configure(configure),
+    )
+    .await;
+    info!("Testing mailbox message remove");
+    let request = json!({
+        "receiver_id": general_purpose::STANDARD.encode(vec![0x02; 33]),
+        "message_ids": [1],
+        "signature": general_purpose::STANDARD.encode(vec![0u8; 64])
+    });
+    let req = test::TestRequest::post()
+        .uri("/v1/taproot-assets/mailbox/remove")
+        .set_json(&request)
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert!(resp.status().is_success());
+    let json: Value = test::read_body_json(resp).await;
+    if json.get("error").is_some() || json.get("code").is_some() {
+        info!("Remove message returned error: {:?}", json);
+    } else {
+        assert!(json.is_object());
+    }
+}
+
+#[actix_rt::test]
 async fn test_mailbox_expiry_handling() {
     let (client, base_url, macaroon_hex) = setup_without_assets().await;
     let app = test::init_service(
