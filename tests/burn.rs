@@ -2,7 +2,7 @@ use actix_web::{test, App};
 use serde_json::Value;
 use serial_test::serial;
 use std::time::Duration;
-use taproot_assets_rest_gateway::api::burn::BurnRequest;
+use taproot_assets_rest_gateway::api::burn::{AssetSpecifier, BurnRequest};
 use taproot_assets_rest_gateway::api::routes::configure;
 use taproot_assets_rest_gateway::tests::setup::{mint_test_asset, setup, setup_without_assets};
 use tokio::time::sleep;
@@ -158,8 +158,10 @@ async fn test_burn_assets_with_correct_confirmation() {
 
     let burn_amount = "10";
     let request = BurnRequest {
-        asset_id: asset_id.clone(),
-        asset_id_str: None,
+        asset_specifier: AssetSpecifier {
+            asset_id_str: Some(asset_id.clone()),
+            group_key_str: None,
+        },
         amount_to_burn: burn_amount.to_string(),
         confirmation_text: "assets will be destroyed".to_string(),
         note: Some("Test burn operation".to_string()),
@@ -259,8 +261,10 @@ async fn test_burn_with_incorrect_confirmation() {
 
     // Test with incorrect confirmation text
     let request = BurnRequest {
-        asset_id: asset_id.clone(),
-        asset_id_str: None,
+        asset_specifier: AssetSpecifier {
+            asset_id_str: Some(asset_id.clone()),
+            group_key_str: None,
+        },
         amount_to_burn: "10".to_string(), // Reduced amount
         confirmation_text: "incorrect text".to_string(),
         note: None,
@@ -309,8 +313,10 @@ async fn test_burn_with_metadata() {
 
     // Test burn with notes/metadata
     let request = BurnRequest {
-        asset_id: asset_id.clone(),
-        asset_id_str: None,
+        asset_specifier: AssetSpecifier {
+            asset_id_str: Some(asset_id.clone()),
+            group_key_str: None,
+        },
         amount_to_burn: "5".to_string(), // Small amount
         confirmation_text: "assets will be destroyed".to_string(),
         note: Some("Burning assets for compliance reasons - Ticket #12345".to_string()),
@@ -430,8 +436,10 @@ async fn test_burn_edge_cases() {
 
     // Test with zero amount
     let request = BurnRequest {
-        asset_id: asset_id.clone(),
-        asset_id_str: None,
+        asset_specifier: AssetSpecifier {
+            asset_id_str: Some(asset_id.clone()),
+            group_key_str: None,
+        },
         amount_to_burn: "0".to_string(),
         confirmation_text: "assets will be destroyed".to_string(),
         note: None,
@@ -453,8 +461,10 @@ async fn test_burn_edge_cases() {
 
     // Test with invalid amount format
     let request_invalid = BurnRequest {
-        asset_id: asset_id.clone(),
-        asset_id_str: None,
+        asset_specifier: AssetSpecifier {
+            asset_id_str: Some(asset_id.clone()),
+            group_key_str: None,
+        },
         amount_to_burn: "invalid".to_string(),
         confirmation_text: "assets will be destroyed".to_string(),
         note: None,
@@ -497,8 +507,10 @@ async fn test_burn_response_structure() {
 
     // Perform a valid burn to check response structure
     let request = BurnRequest {
-        asset_id: asset_id.clone(),
-        asset_id_str: None,
+        asset_specifier: AssetSpecifier {
+            asset_id_str: Some(asset_id.clone()),
+            group_key_str: None,
+        },
         amount_to_burn: "5".to_string(), // Small amount
         confirmation_text: "assets will be destroyed".to_string(),
         note: Some("Testing response structure".to_string()),
@@ -579,8 +591,10 @@ async fn test_burn_validation_messages() {
     let test_cases = vec![
         (
             BurnRequest {
-                asset_id: asset_id.clone(),
-                asset_id_str: None,
+                asset_specifier: AssetSpecifier {
+                    asset_id_str: Some(asset_id.clone()),
+                    group_key_str: None,
+                },
                 amount_to_burn: "0".to_string(),
                 confirmation_text: "assets will be destroyed".to_string(),
                 note: None,
@@ -589,8 +603,10 @@ async fn test_burn_validation_messages() {
         ),
         (
             BurnRequest {
-                asset_id: asset_id.clone(),
-                asset_id_str: None,
+                asset_specifier: AssetSpecifier {
+                    asset_id_str: Some(asset_id.clone()),
+                    group_key_str: None,
+                },
                 amount_to_burn: "100".to_string(),
                 confirmation_text: "wrong text".to_string(),
                 note: None,

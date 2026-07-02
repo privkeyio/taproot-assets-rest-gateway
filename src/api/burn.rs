@@ -7,9 +7,16 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, instrument};
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct BurnRequest {
-    pub asset_id: String,
+pub struct AssetSpecifier {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub asset_id_str: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_key_str: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BurnRequest {
+    pub asset_specifier: AssetSpecifier,
     pub amount_to_burn: String,
     pub confirmation_text: String,
     pub note: Option<String>,
@@ -22,7 +29,7 @@ pub async fn burn_assets(
     macaroon_hex: &str,
     request: BurnRequest,
 ) -> Result<serde_json::Value, AppError> {
-    info!("Burning assets for asset ID: {}", request.asset_id);
+    info!("Burning assets");
     let url = format!("{base_url}/v1/taproot-assets/burn");
     let response = client
         .post(&url)
