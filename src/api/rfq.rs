@@ -39,6 +39,41 @@ pub struct SellOrderRequest {
     pub skip_asset_channel_check: bool,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct QueryAssetRatesRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset_specifier: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub direction: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intent: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset_amount: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payment_amount: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset_rate_hint: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub price_oracle_metadata: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub peer_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expiry_timestamp: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ResolveRequestRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub buy_request: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sell_request: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VerifyAcceptQuoteRequest {
+    pub accept: serde_json::Value,
+}
+
 #[instrument(skip(client, macaroon_hex, request))]
 pub async fn buy_offer(
     client: &Client,
@@ -190,6 +225,123 @@ pub async fn sell_order(
         .json::<Value>()
         .await
         .map_err(AppError::RequestError)
+}
+
+#[instrument(skip(client, macaroon_hex, request))]
+pub async fn portfoliopilot_asset_rates(
+    client: &Client,
+    base_url: &str,
+    macaroon_hex: &str,
+    request: QueryAssetRatesRequest,
+) -> Result<Value, AppError> {
+    info!("Querying portfoliopilot asset rates");
+    let url = format!("{base_url}/v1/taproot-assets/rfq/portfoliopilot/assetrates");
+    let response = client
+        .post(&url)
+        .header("Grpc-Metadata-macaroon", macaroon_hex)
+        .json(&request)
+        .send()
+        .await
+        .map_err(AppError::RequestError)?;
+    response
+        .json::<Value>()
+        .await
+        .map_err(AppError::RequestError)
+}
+
+#[instrument(skip(client, macaroon_hex, request))]
+pub async fn portfoliopilot_resolve(
+    client: &Client,
+    base_url: &str,
+    macaroon_hex: &str,
+    request: ResolveRequestRequest,
+) -> Result<Value, AppError> {
+    info!("Resolving portfoliopilot request");
+    let url = format!("{base_url}/v1/taproot-assets/rfq/portfoliopilot/resolve");
+    let response = client
+        .post(&url)
+        .header("Grpc-Metadata-macaroon", macaroon_hex)
+        .json(&request)
+        .send()
+        .await
+        .map_err(AppError::RequestError)?;
+    response
+        .json::<Value>()
+        .await
+        .map_err(AppError::RequestError)
+}
+
+#[instrument(skip(client, macaroon_hex, request))]
+pub async fn portfoliopilot_verify(
+    client: &Client,
+    base_url: &str,
+    macaroon_hex: &str,
+    request: VerifyAcceptQuoteRequest,
+) -> Result<Value, AppError> {
+    info!("Verifying portfoliopilot accepted quote");
+    let url = format!("{base_url}/v1/taproot-assets/rfq/portfoliopilot/verify");
+    let response = client
+        .post(&url)
+        .header("Grpc-Metadata-macaroon", macaroon_hex)
+        .json(&request)
+        .send()
+        .await
+        .map_err(AppError::RequestError)?;
+    response
+        .json::<Value>()
+        .await
+        .map_err(AppError::RequestError)
+}
+
+async fn portfoliopilot_asset_rates_handler(
+    client: web::Data<Client>,
+    base_url: web::Data<BaseUrl>,
+    macaroon_hex: web::Data<MacaroonHex>,
+    req: web::Json<QueryAssetRatesRequest>,
+) -> HttpResponse {
+    handle_result(
+        portfoliopilot_asset_rates(
+            client.as_ref(),
+            base_url.0.as_str(),
+            macaroon_hex.0.as_str(),
+            req.into_inner(),
+        )
+        .await,
+    )
+}
+
+async fn portfoliopilot_resolve_handler(
+    client: web::Data<Client>,
+    base_url: web::Data<BaseUrl>,
+    macaroon_hex: web::Data<MacaroonHex>,
+    req: web::Json<ResolveRequestRequest>,
+) -> HttpResponse {
+    handle_result(
+        portfoliopilot_resolve(
+            client.as_ref(),
+            base_url.0.as_str(),
+            macaroon_hex.0.as_str(),
+            req.into_inner(),
+        )
+        .await,
+    )
+}
+
+async fn portfoliopilot_verify_handler(
+    client: web::Data<Client>,
+    base_url: web::Data<BaseUrl>,
+    macaroon_hex: web::Data<MacaroonHex>,
+    req: web::Json<VerifyAcceptQuoteRequest>,
+) -> HttpResponse {
+    handle_result(
+        portfoliopilot_verify(
+            client.as_ref(),
+            base_url.0.as_str(),
+            macaroon_hex.0.as_str(),
+            req.into_inner(),
+        )
+        .await,
+    )
 }
 
 async fn buy_offer_handler(
@@ -472,6 +624,18 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         web::resource("/rfq/ntfs")
             .route(web::get().to(rfq_events_ws_handler))
             .route(web::post().to(notifications_handler)),
+    )
+    .service(
+        web::resource("/rfq/portfoliopilot/assetrates")
+            .route(web::post().to(portfoliopilot_asset_rates_handler)),
+    )
+    .service(
+        web::resource("/rfq/portfoliopilot/resolve")
+            .route(web::post().to(portfoliopilot_resolve_handler)),
+    )
+    .service(
+        web::resource("/rfq/portfoliopilot/verify")
+            .route(web::post().to(portfoliopilot_verify_handler)),
     )
     .service(web::resource("/rfq/priceoracle/assetrates").route(web::get().to(asset_rates_handler)))
     .service(web::resource("/rfq/quotes/peeraccepted").route(web::get().to(peer_quotes_handler)))

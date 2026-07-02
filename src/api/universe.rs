@@ -1,7 +1,7 @@
 use super::{handle_result, validate_hex_param, validate_integer_param};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -35,6 +35,35 @@ pub struct SyncRequest {
 pub struct SyncConfigRequest {
     pub global_sync_configs: Vec<serde_json::Value>,
     pub asset_sync_configs: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct IgnoreAssetOutPointRequest {
+    pub asset_out_point: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amount: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InsertSupplyCommitRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_key_bytes: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chain_data: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spent_commitment_outpoint: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issuance_leaves: Option<Vec<serde_json::Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub burn_leaves: Option<Vec<serde_json::Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ignore_leaves: Option<Vec<serde_json::Value>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateSupplyCommitRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_key_bytes: Option<String>,
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -423,6 +452,135 @@ pub async fn get_sync_config(
         .map_err(AppError::RequestError)
 }
 
+#[instrument(skip(client, macaroon_hex))]
+pub async fn fetch_supply_commit(
+    client: &Client,
+    base_url: &str,
+    macaroon_hex: &str,
+    group_key_str: &str,
+    query: &str,
+) -> Result<Value, AppError> {
+    info!(
+        "Fetching supply commitment for group key: {}",
+        group_key_str
+    );
+    let mut url = format!("{base_url}/v1/taproot-assets/universe/supply/{group_key_str}");
+    if !query.is_empty() {
+        url.push('?');
+        url.push_str(query);
+    }
+    let response = client
+        .get(&url)
+        .header("Grpc-Metadata-macaroon", macaroon_hex)
+        .send()
+        .await
+        .map_err(AppError::RequestError)?;
+    response
+        .json::<Value>()
+        .await
+        .map_err(AppError::RequestError)
+}
+
+#[instrument(skip(client, macaroon_hex, request))]
+pub async fn insert_supply_commit(
+    client: &Client,
+    base_url: &str,
+    macaroon_hex: &str,
+    group_key_str: &str,
+    request: InsertSupplyCommitRequest,
+) -> Result<Value, AppError> {
+    info!(
+        "Inserting supply commitment for group key: {}",
+        group_key_str
+    );
+    let url = format!("{base_url}/v1/taproot-assets/universe/supply/{group_key_str}");
+    let response = client
+        .post(&url)
+        .header("Grpc-Metadata-macaroon", macaroon_hex)
+        .json(&request)
+        .send()
+        .await
+        .map_err(AppError::RequestError)?;
+    response
+        .json::<Value>()
+        .await
+        .map_err(AppError::RequestError)
+}
+
+#[instrument(skip(client, macaroon_hex, request))]
+pub async fn ignore_asset_outpoint(
+    client: &Client,
+    base_url: &str,
+    macaroon_hex: &str,
+    request: IgnoreAssetOutPointRequest,
+) -> Result<Value, AppError> {
+    info!("Ignoring asset outpoint");
+    let url = format!("{base_url}/v1/taproot-assets/universe/supply/ignore");
+    let response = client
+        .post(&url)
+        .header("Grpc-Metadata-macaroon", macaroon_hex)
+        .json(&request)
+        .send()
+        .await
+        .map_err(AppError::RequestError)?;
+    response
+        .json::<Value>()
+        .await
+        .map_err(AppError::RequestError)
+}
+
+#[instrument(skip(client, macaroon_hex))]
+pub async fn fetch_supply_leaves(
+    client: &Client,
+    base_url: &str,
+    macaroon_hex: &str,
+    group_key_str: &str,
+    query: &str,
+) -> Result<Value, AppError> {
+    info!("Fetching supply leaves for group key: {}", group_key_str);
+    let mut url = format!("{base_url}/v1/taproot-assets/universe/supply/leaves/{group_key_str}");
+    if !query.is_empty() {
+        url.push('?');
+        url.push_str(query);
+    }
+    let response = client
+        .get(&url)
+        .header("Grpc-Metadata-macaroon", macaroon_hex)
+        .send()
+        .await
+        .map_err(AppError::RequestError)?;
+    response
+        .json::<Value>()
+        .await
+        .map_err(AppError::RequestError)
+}
+
+#[instrument(skip(client, macaroon_hex, request))]
+pub async fn update_supply_commit(
+    client: &Client,
+    base_url: &str,
+    macaroon_hex: &str,
+    group_key_str: &str,
+    request: UpdateSupplyCommitRequest,
+) -> Result<Value, AppError> {
+    info!(
+        "Updating supply commitment for group key: {}",
+        group_key_str
+    );
+    let url = format!("{base_url}/v1/taproot-assets/universe/supply/update/{group_key_str}");
+    let response = client
+        .post(&url)
+        .header("Grpc-Metadata-macaroon", macaroon_hex)
+        .json(&request)
+        .send()
+        .await
+        .map_err(AppError::RequestError)?;
+    response
+        .json::<Value>()
+        .await
+        .map_err(AppError::RequestError)
+}
+
 async fn delete_handler(
     client: web::Data<Client>,
     base_url: web::Data<BaseUrl>,
@@ -496,6 +654,115 @@ async fn leaves_handler(
         return handle_result::<serde_json::Value>(Err(e));
     }
     handle_result(get_leaves(client.as_ref(), &base_url.0, &macaroon_hex.0, &asset_id).await)
+}
+
+async fn fetch_supply_commit_handler(
+    req: HttpRequest,
+    client: web::Data<Client>,
+    base_url: web::Data<BaseUrl>,
+    macaroon_hex: web::Data<MacaroonHex>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let group_key_str = path.into_inner();
+    if let Err(e) = validate_hex_param(&group_key_str) {
+        return handle_result::<serde_json::Value>(Err(e));
+    }
+    handle_result(
+        fetch_supply_commit(
+            client.as_ref(),
+            &base_url.0,
+            &macaroon_hex.0,
+            &group_key_str,
+            req.query_string(),
+        )
+        .await,
+    )
+}
+
+async fn insert_supply_commit_handler(
+    client: web::Data<Client>,
+    base_url: web::Data<BaseUrl>,
+    macaroon_hex: web::Data<MacaroonHex>,
+    path: web::Path<String>,
+    req: web::Json<InsertSupplyCommitRequest>,
+) -> HttpResponse {
+    let group_key_str = path.into_inner();
+    if let Err(e) = validate_hex_param(&group_key_str) {
+        return handle_result::<serde_json::Value>(Err(e));
+    }
+    handle_result(
+        insert_supply_commit(
+            client.as_ref(),
+            &base_url.0,
+            &macaroon_hex.0,
+            &group_key_str,
+            req.into_inner(),
+        )
+        .await,
+    )
+}
+
+async fn ignore_asset_outpoint_handler(
+    client: web::Data<Client>,
+    base_url: web::Data<BaseUrl>,
+    macaroon_hex: web::Data<MacaroonHex>,
+    req: web::Json<IgnoreAssetOutPointRequest>,
+) -> HttpResponse {
+    handle_result(
+        ignore_asset_outpoint(
+            client.as_ref(),
+            &base_url.0,
+            &macaroon_hex.0,
+            req.into_inner(),
+        )
+        .await,
+    )
+}
+
+async fn fetch_supply_leaves_handler(
+    req: HttpRequest,
+    client: web::Data<Client>,
+    base_url: web::Data<BaseUrl>,
+    macaroon_hex: web::Data<MacaroonHex>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let group_key_str = path.into_inner();
+    if let Err(e) = validate_hex_param(&group_key_str) {
+        return handle_result::<serde_json::Value>(Err(e));
+    }
+    handle_result(
+        fetch_supply_leaves(
+            client.as_ref(),
+            &base_url.0,
+            &macaroon_hex.0,
+            &group_key_str,
+            req.query_string(),
+        )
+        .await,
+    )
+}
+
+async fn update_supply_commit_handler(
+    client: web::Data<Client>,
+    base_url: web::Data<BaseUrl>,
+    macaroon_hex: web::Data<MacaroonHex>,
+    path: web::Path<String>,
+    req: web::Json<UpdateSupplyCommitRequest>,
+) -> HttpResponse {
+    let group_key_str = path.into_inner();
+    if let Err(e) = validate_hex_param(&group_key_str) {
+        return handle_result::<serde_json::Value>(Err(e));
+    }
+    handle_result(
+        update_supply_commit(
+            client.as_ref(),
+            &base_url.0,
+            &macaroon_hex.0,
+            &group_key_str,
+            req.into_inner(),
+        )
+        .await,
+    )
 }
 
 async fn multiverse_handler(
@@ -675,6 +942,23 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(
             web::resource("/universe/leaves/asset-id/{asset_id}")
                 .route(web::get().to(leaves_handler)),
+        )
+        .service(
+            web::resource("/universe/supply/ignore")
+                .route(web::post().to(ignore_asset_outpoint_handler)),
+        )
+        .service(
+            web::resource("/universe/supply/leaves/{group_key_str}")
+                .route(web::get().to(fetch_supply_leaves_handler)),
+        )
+        .service(
+            web::resource("/universe/supply/update/{group_key_str}")
+                .route(web::post().to(update_supply_commit_handler)),
+        )
+        .service(
+            web::resource("/universe/supply/{group_key_str}")
+                .route(web::get().to(fetch_supply_commit_handler))
+                .route(web::post().to(insert_supply_commit_handler)),
         )
         .service(web::resource("/universe/multiverse").route(web::post().to(multiverse_handler)))
         .service(

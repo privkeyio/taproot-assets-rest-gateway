@@ -78,6 +78,17 @@ pub struct VirtualPsbtSignRequest {
     pub funded_psbt: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExportBackupRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ImportBackupRequest {
+    pub backup: String,
+}
+
 #[instrument(skip(client, macaroon_hex, request))]
 pub async fn next_internal_key(
     client: &Client,
@@ -368,6 +379,84 @@ pub async fn sign_virtual_psbt(
         .map_err(AppError::RequestError)
 }
 
+#[instrument(skip(client, macaroon_hex, request))]
+pub async fn export_wallet_backup(
+    client: &Client,
+    base_url: &str,
+    macaroon_hex: &str,
+    request: ExportBackupRequest,
+) -> Result<Value, AppError> {
+    info!("Exporting asset wallet backup");
+    let url = format!("{base_url}/v1/taproot-assets/wallet/backup/export");
+    let response = client
+        .post(&url)
+        .header("Grpc-Metadata-macaroon", macaroon_hex)
+        .json(&request)
+        .send()
+        .await
+        .map_err(AppError::RequestError)?;
+    response
+        .json::<Value>()
+        .await
+        .map_err(AppError::RequestError)
+}
+
+#[instrument(skip(client, macaroon_hex, request))]
+pub async fn import_wallet_backup(
+    client: &Client,
+    base_url: &str,
+    macaroon_hex: &str,
+    request: ImportBackupRequest,
+) -> Result<Value, AppError> {
+    info!("Importing assets from backup");
+    let url = format!("{base_url}/v1/taproot-assets/wallet/backup/import");
+    let response = client
+        .post(&url)
+        .header("Grpc-Metadata-macaroon", macaroon_hex)
+        .json(&request)
+        .send()
+        .await
+        .map_err(AppError::RequestError)?;
+    response
+        .json::<Value>()
+        .await
+        .map_err(AppError::RequestError)
+}
+
+async fn export_backup_handler(
+    client: web::Data<Client>,
+    base_url: web::Data<BaseUrl>,
+    macaroon_hex: web::Data<MacaroonHex>,
+    req: web::Json<ExportBackupRequest>,
+) -> HttpResponse {
+    handle_result(
+        export_wallet_backup(
+            client.as_ref(),
+            &base_url.0,
+            &macaroon_hex.0,
+            req.into_inner(),
+        )
+        .await,
+    )
+}
+
+async fn import_backup_handler(
+    client: web::Data<Client>,
+    base_url: web::Data<BaseUrl>,
+    macaroon_hex: web::Data<MacaroonHex>,
+    req: web::Json<ImportBackupRequest>,
+) -> HttpResponse {
+    handle_result(
+        import_wallet_backup(
+            client.as_ref(),
+            &base_url.0,
+            &macaroon_hex.0,
+            req.into_inner(),
+        )
+        .await,
+    )
+}
+
 async fn next_internal_key_handler(
     client: web::Data<Client>,
     base_url: web::Data<BaseUrl>,
@@ -593,6 +682,10 @@ async fn sign_virtual_psbt_handler(
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
+        web::resource("/wallet/backup/export").route(web::post().to(export_backup_handler)),
+    )
+    .service(web::resource("/wallet/backup/import").route(web::post().to(import_backup_handler)))
+    .service(
         web::resource("/wallet/internal-key/next").route(web::post().to(next_internal_key_handler)),
     )
     .service(
