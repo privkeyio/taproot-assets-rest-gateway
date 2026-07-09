@@ -82,7 +82,9 @@ impl ResponseError for AppError {
             AppError::DatabaseError(_) => {
                 ("Database operation failed".to_string(), "database_error")
             }
-            AppError::UpstreamError { .. } => unreachable!("handled above"),
+            AppError::UpstreamError { .. } => {
+                ("Upstream request failed".to_string(), "upstream_error")
+            }
         };
 
         HttpResponse::build(self.status_code()).json(serde_json::json!({
