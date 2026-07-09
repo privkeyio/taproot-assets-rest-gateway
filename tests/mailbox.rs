@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use std::time::Duration;
 use taproot_assets_rest_gateway::api::routes::configure;
-use taproot_assets_rest_gateway::tests::setup::setup_without_assets;
+use taproot_assets_rest_gateway::tests::setup::{assert_status_matches_body, setup_without_assets};
 use taproot_assets_rest_gateway::types::{BaseUrl, MacaroonHex};
 use taproot_assets_rest_gateway::websocket::{
     connection_manager::WebSocketConnectionManager, proxy_handler::WebSocketProxyHandler,
@@ -30,7 +30,7 @@ async fn test_get_mailbox_info() {
     let resp = test::call_service(&app, req).await;
     let resp_status = resp.status();
     let json: Value = test::read_body_json(resp).await;
-    assert!(resp_status.is_success() || json.get("error").is_some());
+    assert_status_matches_body(resp_status, &json);
     if json.get("error").is_some() || json.get("code").is_some() {
         info!("Mailbox info returned error: {:?}", json);
         return;
@@ -66,7 +66,7 @@ async fn test_send_message_basic() {
     let resp = test::call_service(&app, req).await;
     let resp_status = resp.status();
     let json: Value = test::read_body_json(resp).await;
-    assert!(resp_status.is_success() || json.get("error").is_some());
+    assert_status_matches_body(resp_status, &json);
     if json.get("error").is_some() || json.get("code").is_some() {
         info!("Send message returned error: {:?}", json);
     } else {
@@ -149,7 +149,7 @@ async fn test_remove_message() {
     let resp = test::call_service(&app, req).await;
     let resp_status = resp.status();
     let json: Value = test::read_body_json(resp).await;
-    assert!(resp_status.is_success() || json.get("error").is_some());
+    assert_status_matches_body(resp_status, &json);
     if json.get("error").is_some() || json.get("code").is_some() {
         info!("Remove message returned error: {:?}", json);
     } else {

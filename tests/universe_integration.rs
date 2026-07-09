@@ -5,7 +5,9 @@ use taproot_assets_rest_gateway::api::routes::configure;
 use taproot_assets_rest_gateway::api::universe::{
     FederationRequest, SyncConfigRequest, SyncRequest,
 };
-use taproot_assets_rest_gateway::tests::setup::{mint_test_asset, setup, setup_without_assets};
+use taproot_assets_rest_gateway::tests::setup::{
+    assert_status_matches_body, mint_test_asset, setup, setup_without_assets,
+};
 use tokio::time::{sleep, Duration};
 use tracing::info;
 
@@ -164,7 +166,7 @@ async fn test_complete_universe_workflow() {
         .await;
         let roots_resp_status = roots_resp.status();
         let roots_json: Value = test::read_body_json(roots_resp).await;
-        assert!(roots_resp_status.is_success() || roots_json.get("error").is_some());
+        assert_status_matches_body(roots_resp_status, &roots_json);
 
         if roots_json.get("error").is_some() || roots_json.get("code").is_some() {
             info!("Asset roots query returned error: {:?}", roots_json);
@@ -187,7 +189,7 @@ async fn test_complete_universe_workflow() {
         .await;
         let leaves_resp_status = leaves_resp.status();
         let leaves_json: Value = test::read_body_json(leaves_resp).await;
-        assert!(leaves_resp_status.is_success() || leaves_json.get("error").is_some());
+        assert_status_matches_body(leaves_resp_status, &leaves_json);
 
         if leaves_json.get("error").is_some() || leaves_json.get("code").is_some() {
             info!("Asset leaves query returned error: {:?}", leaves_json);

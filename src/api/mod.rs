@@ -16,6 +16,7 @@ pub mod universe;
 pub mod wallet;
 
 use crate::error::AppError;
+use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
 
 pub fn validate_hex_param(value: &str) -> Result<(), AppError> {
@@ -110,6 +111,15 @@ pub async fn parse_upstream<T: serde::de::DeserializeOwned>(
 pub fn handle_result<T: serde::Serialize>(result: Result<T, AppError>) -> HttpResponse {
     match result {
         Ok(value) => HttpResponse::Ok().json(value),
+        // Relay tapd's own error document unchanged so callers keep reading the
+        // `code`/`message` fields it defines; only the status is corrected.
+        Err(AppError::UpstreamError { status, body }) => {
+            let status = StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY);
+            match serde_json::from_str::<serde_json::Value>(&body) {
+                Ok(json) => HttpResponse::build(status).json(json),
+                Err(_) => HttpResponse::build(status).json(serde_json::json!({ "error": body })),
+            }
+        }
         Err(e) => {
             let status = e.status_code();
             HttpResponse::build(status).json(serde_json::json!({
@@ -148,5 +158,45 @@ mod tests {
     fn test_validate_group_key_rejects_traversal() {
         assert!(validate_group_key("../../etc/passwd").is_err());
         assert!(validate_group_key("%2e%2e%2fadmin").is_err());
+    }
+
+    async fn body_of(resp: HttpResponse) -> serde_json::Value {
+        let bytes = actix_web::body::to_bytes(resp.into_body()).await.unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    #[actix_rt::test]
+    async fn test_handle_result_relays_upstream_status_and_body() {
+        let resp = handle_result::<serde_json::Value>(Err(AppError::UpstreamError {
+            status: 400,
+            body: r#"{"code":3,"message":"invalid confirmation text"}"#.to_string(),
+        }));
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = body_of(resp).await;
+        assert_eq!(body["code"], 3);
+        assert_eq!(body["message"], "invalid confirmation text");
+    }
+
+    #[actix_rt::test]
+    async fn test_handle_result_wraps_non_json_upstream_body() {
+        let resp = handle_result::<serde_json::Value>(Err(AppError::UpstreamError {
+            status: 503,
+            body: "upstream down".to_string(),
+        }));
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(body_of(resp).await["error"], "upstream down");
+    }
+
+    #[actix_rt::test]
+    async fn test_handle_result_never_returns_ok_for_errors() {
+        let resp = handle_result::<serde_json::Value>(Err(AppError::InvalidInput("bad".into())));
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[actix_rt::test]
+    async fn test_handle_result_passes_success_through() {
+        let resp = handle_result(Ok(serde_json::json!({"ok": true})));
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(body_of(resp).await["ok"], true);
     }
 }

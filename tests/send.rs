@@ -4,7 +4,9 @@ use serial_test::serial;
 use taproot_assets_rest_gateway::api::addresses::NewAddrRequest;
 use taproot_assets_rest_gateway::api::routes::configure;
 use taproot_assets_rest_gateway::api::send::SendRequest;
-use taproot_assets_rest_gateway::tests::setup::{mint_test_asset, setup};
+use taproot_assets_rest_gateway::tests::setup::{
+    assert_status_matches_body, mint_test_asset, setup,
+};
 
 #[actix_rt::test]
 #[serial]
@@ -45,7 +47,7 @@ async fn test_send_assets_basic() {
     .await;
     let addr_resp_status = addr_resp.status();
     let addr_json: Value = test::read_body_json(addr_resp).await;
-    assert!(addr_resp_status.is_success() || addr_json.get("error").is_some());
+    assert_status_matches_body(addr_resp_status, &addr_json);
     if addr_json.get("error").is_some() || addr_json.get("code").is_some() {
         println!("Address creation failed: {addr_json:?}");
         return;
@@ -64,7 +66,7 @@ async fn test_send_assets_basic() {
     let resp = test::call_service(&app, req).await;
     let resp_status = resp.status();
     let send_json: Value = test::read_body_json(resp).await;
-    assert!(resp_status.is_success() || send_json.get("error").is_some());
+    assert_status_matches_body(resp_status, &send_json);
     if send_json.get("error").is_some() || send_json.get("code").is_some() {
         println!("Send failed with error: {send_json:?}");
         return;
@@ -116,7 +118,7 @@ async fn test_send_with_custom_fee_rate() {
     .await;
     let addr_resp_status = addr_resp.status();
     let addr_json: Value = test::read_body_json(addr_resp).await;
-    assert!(addr_resp_status.is_success() || addr_json.get("error").is_some());
+    assert_status_matches_body(addr_resp_status, &addr_json);
     if addr_json.get("error").is_some() || addr_json.get("code").is_some() {
         println!("Address creation failed: {addr_json:?}");
         return;
@@ -139,7 +141,7 @@ async fn test_send_with_custom_fee_rate() {
     let resp = test::call_service(&app, req).await;
     let resp_status = resp.status();
     let send_json: Value = test::read_body_json(resp).await;
-    assert!(resp_status.is_success() || send_json.get("error").is_some());
+    assert_status_matches_body(resp_status, &send_json);
     if send_json.get("error").is_some() || send_json.get("code").is_some() {
         println!("Send failed with error: {send_json:?}");
         return;
@@ -191,7 +193,7 @@ async fn test_send_multiple_outputs() {
         .await;
         let addr_resp_status = addr_resp.status();
         let addr_json: Value = test::read_body_json(addr_resp).await;
-        assert!(addr_resp_status.is_success() || addr_json.get("error").is_some());
+        assert_status_matches_body(addr_resp_status, &addr_json);
         if addr_json.get("error").is_some() || addr_json.get("code").is_some() {
             println!("Address creation failed: {addr_json:?}");
             continue;
@@ -276,7 +278,7 @@ async fn test_send_with_proof_courier() {
     .await;
     let addr_resp_status = addr_resp.status();
     let addr_json: Value = test::read_body_json(addr_resp).await;
-    assert!(addr_resp_status.is_success() || addr_json.get("error").is_some());
+    assert_status_matches_body(addr_resp_status, &addr_json);
     // Check for errors first
     if addr_json.get("error").is_some() || addr_json.get("code").is_some() {
         println!("Address creation failed: {addr_json:?}");
@@ -330,7 +332,7 @@ async fn test_send_validation_errors() {
     let empty_resp = test::call_service(&app, empty_req).await;
     let empty_resp_status = empty_resp.status();
     let empty_json: Value = test::read_body_json(empty_resp).await;
-    assert!(empty_resp_status.is_success() || empty_json.get("error").is_some());
+    assert_status_matches_body(empty_resp_status, &empty_json);
     if empty_json.get("error").is_some() || empty_json.get("code").is_some() {
         println!("Empty address error: {empty_json:?}");
     } else {
@@ -407,7 +409,7 @@ async fn test_send_response_structure() {
     let resp = test::call_service(&app, req).await;
     let resp_status = resp.status();
     let send_json: Value = test::read_body_json(resp).await;
-    assert!(resp_status.is_success() || send_json.get("error").is_some());
+    assert_status_matches_body(resp_status, &send_json);
     if send_json.get("error").is_some() || send_json.get("code").is_some() {
         println!("Send failed with error: {send_json:?}");
         return;

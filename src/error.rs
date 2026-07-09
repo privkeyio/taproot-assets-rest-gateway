@@ -39,6 +39,14 @@ impl ResponseError for AppError {
     }
 
     fn error_response(&self) -> HttpResponse {
+        // Upstream errors relay tapd's document verbatim, matching handle_result.
+        if let AppError::UpstreamError { status, body } = self {
+            let status = StatusCode::from_u16(*status).unwrap_or(StatusCode::BAD_GATEWAY);
+            return match serde_json::from_str::<serde_json::Value>(body) {
+                Ok(json) => HttpResponse::build(status).json(json),
+                Err(_) => HttpResponse::build(status).json(serde_json::json!({ "error": body })),
+            };
+        }
         let (message, error_type) = match self {
             AppError::ValidationError(msg) => (msg.clone(), "validation_error"),
             AppError::InvalidInput(msg) => (msg.clone(), "invalid_input"),
@@ -74,7 +82,7 @@ impl ResponseError for AppError {
             AppError::DatabaseError(_) => {
                 ("Database operation failed".to_string(), "database_error")
             }
-            AppError::UpstreamError { body, .. } => (body.clone(), "upstream_error"),
+            AppError::UpstreamError { .. } => unreachable!("handled above"),
         };
 
         HttpResponse::build(self.status_code()).json(serde_json::json!({

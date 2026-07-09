@@ -7,7 +7,9 @@ use taproot_assets_rest_gateway::api::wallet::{
     ExportBackupRequest, ImportBackupRequest, InternalKeyRequest, OwnershipProveRequest,
     OwnershipVerifyRequest, ScriptKeyRequest, UtxoLeaseDeleteRequest,
 };
-use taproot_assets_rest_gateway::tests::setup::{mint_test_asset, setup, setup_without_assets};
+use taproot_assets_rest_gateway::tests::setup::{
+    assert_status_matches_body, mint_test_asset, setup, setup_without_assets,
+};
 
 #[actix_rt::test]
 async fn test_generate_next_internal_key() {
@@ -77,7 +79,7 @@ async fn test_query_internal_key() {
     let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
-    assert!(resp_status.is_success() || json.get("error").is_some());
+    assert_status_matches_body(resp_status, &json);
 
     // Check if it's an error response
     if json.get("error").is_some() || json.get("code").is_some() {
@@ -158,7 +160,7 @@ async fn test_query_script_key() {
     let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
-    assert!(resp_status.is_success() || json.get("error").is_some());
+    assert_status_matches_body(resp_status, &json);
 
     // Check if it's an error response
     if json.get("error").is_some() || json.get("code").is_some() {
@@ -208,7 +210,7 @@ async fn test_declare_script_key() {
     let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
-    assert!(resp_status.is_success() || json.get("error").is_some());
+    assert_status_matches_body(resp_status, &json);
 
     // Check if it's an error response
     if json.get("error").is_some() || json.get("code").is_some() {
@@ -287,7 +289,7 @@ async fn test_prove_asset_ownership() {
                 let resp_status = resp.status();
 
                 let json: Value = test::read_body_json(resp).await;
-                assert!(resp_status.is_success() || json.get("error").is_some());
+                assert_status_matches_body(resp_status, &json);
 
                 // Check if it's an error response
                 if json.get("error").is_some() || json.get("code").is_some() {
@@ -389,7 +391,7 @@ async fn test_verify_ownership_proof() {
                     let resp_status = resp.status();
 
                     let json: Value = test::read_body_json(resp).await;
-                    assert!(resp_status.is_success() || json.get("error").is_some());
+                    assert_status_matches_body(resp_status, &json);
 
                     // Check if it's an error response
                     if json.get("error").is_some() || json.get("code").is_some() {
@@ -437,7 +439,7 @@ async fn test_delete_utxo_lease() {
     let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
-    assert!(resp_status.is_success() || json.get("error").is_some());
+    assert_status_matches_body(resp_status, &json);
 
     // Check if it's an error response
     if json.get("error").is_some() || json.get("code").is_some() {
@@ -475,7 +477,7 @@ async fn test_key_family_ranges() {
         let resp_status = resp.status();
 
         let json: Value = test::read_body_json(resp).await;
-        assert!(resp_status.is_success() || json.get("error").is_some());
+        assert_status_matches_body(resp_status, &json);
 
         // Check if it's an error response
         if json.get("error").is_some() || json.get("code").is_some() {
@@ -616,7 +618,7 @@ async fn test_ownership_proof_with_invalid_challenge() {
                     let resp_status = resp.status();
 
                     let json: Value = test::read_body_json(resp).await;
-                    assert!(resp_status.is_success() || json.get("error").is_some());
+                    assert_status_matches_body(resp_status, &json);
 
                     // Should either return an error or valid_proof=false
                     if json.get("error").is_none() && json.get("code").is_none() {
@@ -650,7 +652,7 @@ async fn test_export_asset_wallet_backup() {
     let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
-    assert!(resp_status.is_success() || json.get("error").is_some());
+    assert_status_matches_body(resp_status, &json);
 
     // Check if it's an error response
     if json.get("error").is_some() || json.get("code").is_some() {
@@ -687,7 +689,7 @@ async fn test_import_assets_from_backup() {
     let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
-    assert!(resp_status.is_success() || json.get("error").is_some());
+    assert_status_matches_body(resp_status, &json);
 
     // Check if it's an error response
     if json.get("error").is_some() || json.get("code").is_some() {
@@ -742,7 +744,7 @@ async fn test_declare_multiple_script_keys() {
         let resp_status = resp.status();
 
         let json: Value = test::read_body_json(resp).await;
-        assert!(resp_status.is_success() || json.get("error").is_some());
+        assert_status_matches_body(resp_status, &json);
         if json.get("error").is_some() || json.get("code").is_some() {
             println!("Declare script key type {key_type} returned error: {json:?}");
         }

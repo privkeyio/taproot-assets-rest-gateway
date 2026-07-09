@@ -4,7 +4,9 @@ use serial_test::serial;
 use std::time::Duration;
 use taproot_assets_rest_gateway::api::burn::{AssetSpecifier, BurnRequest};
 use taproot_assets_rest_gateway::api::routes::configure;
-use taproot_assets_rest_gateway::tests::setup::{mint_test_asset, setup, setup_without_assets};
+use taproot_assets_rest_gateway::tests::setup::{
+    assert_status_matches_body, mint_test_asset, setup, setup_without_assets,
+};
 use tokio::time::sleep;
 use tracing::{debug, info};
 
@@ -182,7 +184,7 @@ async fn test_burn_assets_with_correct_confirmation() {
         let resp_status = resp.status();
 
         let burn_resp: Value = test::read_body_json(resp).await;
-        assert!(resp_status.is_success() || burn_resp.get("error").is_some());
+        assert_status_matches_body(resp_status, &burn_resp);
 
         // Check if it's an error response
         if let Some(_code) = burn_resp.get("code") {
@@ -334,7 +336,7 @@ async fn test_burn_with_metadata() {
         let resp_status = resp.status();
 
         let json: Value = test::read_body_json(resp).await;
-        assert!(resp_status.is_success() || json.get("error").is_some());
+        assert_status_matches_body(resp_status, &json);
 
         if json.get("code").is_none() {
             // Success!
@@ -480,7 +482,7 @@ async fn test_burn_edge_cases() {
     // API returns 200 OK with error in response body
     let resp_invalid_status = resp_invalid.status();
     let json_invalid: Value = test::read_body_json(resp_invalid).await;
-    assert!(resp_invalid_status.is_success() || json_invalid.get("error").is_some());
+    assert_status_matches_body(resp_invalid_status, &json_invalid);
     assert!(json_invalid.get("code").is_some() || json_invalid.get("error").is_some());
 }
 
@@ -530,7 +532,7 @@ async fn test_burn_response_structure() {
         let resp_status = resp.status();
 
         let json: Value = test::read_body_json(resp).await;
-        assert!(resp_status.is_success() || json.get("error").is_some());
+        assert_status_matches_body(resp_status, &json);
 
         // Check if it's an error response
         if json.get("code").is_some() {

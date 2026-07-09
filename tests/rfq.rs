@@ -6,7 +6,9 @@ use taproot_assets_rest_gateway::api::rfq::{
     SellOfferRequest, SellOrderRequest, VerifyAcceptQuoteRequest,
 };
 use taproot_assets_rest_gateway::api::routes::configure;
-use taproot_assets_rest_gateway::tests::setup::{mint_test_asset, setup, setup_without_assets};
+use taproot_assets_rest_gateway::tests::setup::{
+    assert_status_matches_body, mint_test_asset, setup, setup_without_assets,
+};
 use tracing::info;
 
 #[actix_rt::test]
@@ -144,7 +146,7 @@ async fn test_submit_buy_order() {
     let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
-    assert!(resp_status.is_success() || json.get("error").is_some());
+    assert_status_matches_body(resp_status, &json);
     info!("Buy order response: {:?}", json);
 
     // Check if it's an error response first
@@ -221,7 +223,7 @@ async fn test_submit_sell_order() {
     let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
-    assert!(resp_status.is_success() || json.get("error").is_some());
+    assert_status_matches_body(resp_status, &json);
     info!("Sell order response: {:?}", json);
 
     // Check if it's an error response first

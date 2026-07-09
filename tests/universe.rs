@@ -1,4 +1,4 @@
-use actix_web::{test, App};
+use actix_web::{http::StatusCode, test, App};
 use serde_json::{json, Value};
 use serial_test::serial;
 use taproot_assets_rest_gateway::api::routes::configure;
@@ -6,7 +6,9 @@ use taproot_assets_rest_gateway::api::universe::{
     FederationRequest, IgnoreAssetOutPointRequest, InsertSupplyCommitRequest, MultiverseRequest,
     PushProofRequest, SyncConfigRequest, SyncRequest, UpdateSupplyCommitRequest,
 };
-use taproot_assets_rest_gateway::tests::setup::{mint_test_asset, setup, setup_without_assets};
+use taproot_assets_rest_gateway::tests::setup::{
+    assert_status_matches_body, mint_test_asset, setup, setup_without_assets,
+};
 use tokio::time::{sleep, Duration};
 
 #[actix_rt::test]
@@ -669,7 +671,7 @@ async fn test_get_asset_keys() {
     let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
-    assert!(resp_status.is_success() || json.get("error").is_some());
+    assert_status_matches_body(resp_status, &json);
 
     // Check if we got an error response
     if json.get("error").is_some() || json.get("code").is_some() {
@@ -907,7 +909,7 @@ async fn test_fetch_supply_commit() {
     let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
-    assert!(resp_status.is_success() || json.get("error").is_some());
+    assert_status_matches_body(resp_status, &json);
     if json.get("error").is_some() || json.get("code").is_some() {
         println!("Fetch supply commit returned error: {json:?}");
     } else {
@@ -946,7 +948,7 @@ async fn test_insert_supply_commit() {
     let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
-    assert!(resp_status.is_success() || json.get("error").is_some());
+    assert_status_matches_body(resp_status, &json);
     if json.get("error").is_some() || json.get("code").is_some() {
         println!("Insert supply commit returned error: {json:?}");
     } else {
@@ -987,7 +989,7 @@ async fn test_ignore_asset_outpoint() {
     let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
-    assert!(resp_status.is_success() || json.get("error").is_some());
+    assert_status_matches_body(resp_status, &json);
     if json.get("error").is_some() || json.get("code").is_some() {
         println!("Ignore asset outpoint returned error: {json:?}");
     } else {
@@ -1018,7 +1020,7 @@ async fn test_fetch_supply_leaves() {
     let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
-    assert!(resp_status.is_success() || json.get("error").is_some());
+    assert_status_matches_body(resp_status, &json);
     if json.get("error").is_some() || json.get("code").is_some() {
         println!("Fetch supply leaves returned error: {json:?}");
     } else {
@@ -1054,7 +1056,7 @@ async fn test_update_supply_commit() {
     let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
-    assert!(resp_status.is_success() || json.get("error").is_some());
+    assert_status_matches_body(resp_status, &json);
     if json.get("error").is_some() || json.get("code").is_some() {
         println!("Update supply commit returned error: {json:?}");
     } else {
@@ -1078,5 +1080,15 @@ async fn test_fetch_supply_commit_invalid_group_key() {
         .uri("/v1/taproot-assets/universe/supply/not-hex")
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_client_error());
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // A hex string of the wrong length is rejected before any upstream call.
+    let req = test::TestRequest::get()
+        .uri(&format!(
+            "/v1/taproot-assets/universe/supply/{}",
+            "a".repeat(65)
+        ))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
