@@ -193,10 +193,7 @@ pub async fn create_address(
         .await
         .map_err(AppError::RequestError)?;
 
-    let addr = response
-        .json::<Addr>()
-        .await
-        .map_err(AppError::RequestError)?;
+    let addr = parse_upstream::<Addr>(response).await?;
 
     if let Some(ref encoded) = addr.encoded {
         debug!("Created address: {}", encoded);
