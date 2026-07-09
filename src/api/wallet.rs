@@ -1,4 +1,4 @@
-use super::{handle_result, validate_hex_param};
+use super::{handle_result, parse_upstream, validate_hex_param};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
 use actix_web::{web, HttpResponse};
@@ -118,10 +118,7 @@ pub async fn next_internal_key(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -139,10 +136,7 @@ pub async fn get_internal_key(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -161,10 +155,7 @@ pub async fn prove_ownership(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -183,10 +174,7 @@ pub async fn verify_ownership(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -205,10 +193,7 @@ pub async fn declare_script_key(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -230,10 +215,7 @@ pub async fn next_script_key(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -251,10 +233,7 @@ pub async fn get_script_key(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -273,10 +252,7 @@ pub async fn delete_utxo_lease(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -295,10 +271,7 @@ pub async fn anchor_virtual_psbt(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -317,10 +290,7 @@ pub async fn commit_virtual_psbt(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -339,10 +309,7 @@ pub async fn fund_virtual_psbt(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -361,10 +328,7 @@ pub async fn log_virtual_psbt_transfer(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -383,10 +347,7 @@ pub async fn sign_virtual_psbt(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -405,10 +366,7 @@ pub async fn export_wallet_backup(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -427,10 +385,7 @@ pub async fn import_wallet_backup(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 async fn export_backup_handler(

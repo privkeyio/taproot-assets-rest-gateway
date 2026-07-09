@@ -666,9 +666,10 @@ async fn test_get_asset_keys() {
         ))
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert!(resp_status.is_success() || json.get("error").is_some());
 
     // Check if we got an error response
     if json.get("error").is_some() || json.get("code").is_some() {
@@ -903,9 +904,10 @@ async fn test_fetch_supply_commit() {
         ))
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert!(resp_status.is_success() || json.get("error").is_some());
     if json.get("error").is_some() || json.get("code").is_some() {
         println!("Fetch supply commit returned error: {json:?}");
     } else {
@@ -941,9 +943,10 @@ async fn test_insert_supply_commit() {
         .set_json(&request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert!(resp_status.is_success() || json.get("error").is_some());
     if json.get("error").is_some() || json.get("code").is_some() {
         println!("Insert supply commit returned error: {json:?}");
     } else {
@@ -981,9 +984,10 @@ async fn test_ignore_asset_outpoint() {
         .set_json(&request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert!(resp_status.is_success() || json.get("error").is_some());
     if json.get("error").is_some() || json.get("code").is_some() {
         println!("Ignore asset outpoint returned error: {json:?}");
     } else {
@@ -1011,9 +1015,10 @@ async fn test_fetch_supply_leaves() {
         ))
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert!(resp_status.is_success() || json.get("error").is_some());
     if json.get("error").is_some() || json.get("code").is_some() {
         println!("Fetch supply leaves returned error: {json:?}");
     } else {
@@ -1046,9 +1051,10 @@ async fn test_update_supply_commit() {
         .set_json(&request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert!(resp_status.is_success() || json.get("error").is_some());
     if json.get("error").is_some() || json.get("code").is_some() {
         println!("Update supply commit returned error: {json:?}");
     } else {

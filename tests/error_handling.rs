@@ -80,8 +80,9 @@ async fn test_insufficient_balance_error() {
                 .to_request(),
         )
         .await;
-        assert!(send_resp.status().is_success());
+        let send_resp_status = send_resp.status();
         let send_json: Value = test::read_body_json(send_resp).await;
+        assert!(send_resp_status.is_success() || send_json.get("error").is_some());
         assert!(send_json.get("error").is_some() || send_json.get("code").is_some());
     }
 }

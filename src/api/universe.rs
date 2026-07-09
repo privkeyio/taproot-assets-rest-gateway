@@ -1,4 +1,6 @@
-use super::{handle_result, validate_group_key, validate_hex_param, validate_integer_param};
+use super::{
+    handle_result, parse_upstream, validate_group_key, validate_hex_param, validate_integer_param,
+};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
 use actix_web::{web, HttpRequest, HttpResponse};
@@ -80,10 +82,7 @@ pub async fn delete_universe(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -100,10 +99,7 @@ pub async fn delete_federation(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -122,10 +118,7 @@ pub async fn add_federation(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -142,10 +135,7 @@ pub async fn get_federation(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -162,10 +152,7 @@ pub async fn get_universe_info(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -183,10 +170,7 @@ pub async fn get_keys(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -204,10 +188,7 @@ pub async fn get_leaves(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -226,10 +207,7 @@ pub async fn get_multiverse(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -252,10 +230,7 @@ pub async fn get_proofs(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -281,10 +256,7 @@ pub async fn push_proof(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -301,10 +273,7 @@ pub async fn get_roots(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -322,10 +291,7 @@ pub async fn get_asset_roots(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -342,10 +308,7 @@ pub async fn get_stats(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -362,10 +325,7 @@ pub async fn get_asset_stats(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -382,10 +342,7 @@ pub async fn get_event_stats(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -404,10 +361,7 @@ pub async fn sync_universe(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -426,10 +380,7 @@ pub async fn set_sync_config(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -446,10 +397,7 @@ pub async fn get_sync_config(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -475,10 +423,7 @@ pub async fn fetch_supply_commit(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -501,10 +446,7 @@ pub async fn insert_supply_commit(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -523,10 +465,7 @@ pub async fn ignore_asset_outpoint(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -549,10 +488,7 @@ pub async fn fetch_supply_leaves(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -575,10 +511,7 @@ pub async fn update_supply_commit(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 async fn delete_handler(

@@ -29,6 +29,8 @@ pub enum AppError {
     WebSocketProxyError(String),
     #[error("Database error: {0}")]
     DatabaseError(String),
+    #[error("Upstream returned {status}: {body}")]
+    UpstreamError { status: u16, body: String },
 }
 
 impl ResponseError for AppError {
@@ -72,6 +74,7 @@ impl ResponseError for AppError {
             AppError::DatabaseError(_) => {
                 ("Database operation failed".to_string(), "database_error")
             }
+            AppError::UpstreamError { body, .. } => (body.clone(), "upstream_error"),
         };
 
         HttpResponse::build(self.status_code()).json(serde_json::json!({
@@ -90,6 +93,9 @@ impl AppError {
             AppError::WebSocketError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::WebSocketProxyError(_) => StatusCode::BAD_GATEWAY,
             AppError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::UpstreamError { status, .. } => {
+                StatusCode::from_u16(*status).unwrap_or(StatusCode::BAD_GATEWAY)
+            }
             AppError::RequestError(e) => {
                 if e.is_timeout() {
                     StatusCode::GATEWAY_TIMEOUT

@@ -1,4 +1,4 @@
-use super::handle_result;
+use super::{handle_result, parse_upstream};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
 use actix_web::{web, HttpRequest, HttpResponse, Result as ActixResult};
@@ -91,10 +91,7 @@ pub async fn buy_offer(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -114,10 +111,7 @@ pub async fn buy_order(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -135,10 +129,7 @@ pub async fn get_notifications(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -155,10 +146,7 @@ pub async fn get_asset_rates(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -175,10 +163,7 @@ pub async fn get_peer_quotes(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -198,10 +183,7 @@ pub async fn sell_offer(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -221,10 +203,7 @@ pub async fn sell_order(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -243,10 +222,7 @@ pub async fn portfoliopilot_asset_rates(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -265,10 +241,7 @@ pub async fn portfoliopilot_resolve(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -287,10 +260,7 @@ pub async fn portfoliopilot_verify(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 async fn portfoliopilot_asset_rates_handler(

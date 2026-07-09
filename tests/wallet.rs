@@ -74,9 +74,10 @@ async fn test_query_internal_key() {
     let resp = test::call_service(&app, req).await;
 
     // The API returns 200 OK with an error in the response body if key not found
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert!(resp_status.is_success() || json.get("error").is_some());
 
     // Check if it's an error response
     if json.get("error").is_some() || json.get("code").is_some() {
@@ -154,9 +155,10 @@ async fn test_query_script_key() {
     let resp = test::call_service(&app, req).await;
 
     // The API returns 200 OK with an error in the response body if key not found
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert!(resp_status.is_success() || json.get("error").is_some());
 
     // Check if it's an error response
     if json.get("error").is_some() || json.get("code").is_some() {
@@ -203,9 +205,10 @@ async fn test_declare_script_key() {
     let resp = test::call_service(&app, req).await;
 
     // The API returns 200 OK even for errors
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert!(resp_status.is_success() || json.get("error").is_some());
 
     // Check if it's an error response
     if json.get("error").is_some() || json.get("code").is_some() {
@@ -281,9 +284,10 @@ async fn test_prove_asset_ownership() {
                     .set_json(&request)
                     .to_request();
                 let resp = test::call_service(&app, req).await;
-                assert!(resp.status().is_success());
+                let resp_status = resp.status();
 
                 let json: Value = test::read_body_json(resp).await;
+                assert!(resp_status.is_success() || json.get("error").is_some());
 
                 // Check if it's an error response
                 if json.get("error").is_some() || json.get("code").is_some() {
@@ -382,9 +386,10 @@ async fn test_verify_ownership_proof() {
                         .set_json(&verify_request)
                         .to_request();
                     let resp = test::call_service(&app, req).await;
-                    assert!(resp.status().is_success());
+                    let resp_status = resp.status();
 
                     let json: Value = test::read_body_json(resp).await;
+                    assert!(resp_status.is_success() || json.get("error").is_some());
 
                     // Check if it's an error response
                     if json.get("error").is_some() || json.get("code").is_some() {
@@ -429,9 +434,10 @@ async fn test_delete_utxo_lease() {
     let resp = test::call_service(&app, req).await;
 
     // The API returns 200 OK even for errors
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert!(resp_status.is_success() || json.get("error").is_some());
 
     // Check if it's an error response
     if json.get("error").is_some() || json.get("code").is_some() {
@@ -466,9 +472,10 @@ async fn test_key_family_ranges() {
             .set_json(&request)
             .to_request();
         let resp = test::call_service(&app, req).await;
-        assert!(resp.status().is_success());
+        let resp_status = resp.status();
 
         let json: Value = test::read_body_json(resp).await;
+        assert!(resp_status.is_success() || json.get("error").is_some());
 
         // Check if it's an error response
         if json.get("error").is_some() || json.get("code").is_some() {
@@ -606,9 +613,10 @@ async fn test_ownership_proof_with_invalid_challenge() {
                         .set_json(&verify_request)
                         .to_request();
                     let resp = test::call_service(&app, req).await;
-                    assert!(resp.status().is_success());
+                    let resp_status = resp.status();
 
                     let json: Value = test::read_body_json(resp).await;
+                    assert!(resp_status.is_success() || json.get("error").is_some());
 
                     // Should either return an error or valid_proof=false
                     if json.get("error").is_none() && json.get("code").is_none() {
@@ -639,9 +647,10 @@ async fn test_export_asset_wallet_backup() {
         .set_json(&request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert!(resp_status.is_success() || json.get("error").is_some());
 
     // Check if it's an error response
     if json.get("error").is_some() || json.get("code").is_some() {
@@ -675,9 +684,10 @@ async fn test_import_assets_from_backup() {
     let resp = test::call_service(&app, req).await;
 
     // The API returns 200 OK even for errors
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert!(resp_status.is_success() || json.get("error").is_some());
 
     // Check if it's an error response
     if json.get("error").is_some() || json.get("code").is_some() {
@@ -729,9 +739,10 @@ async fn test_declare_multiple_script_keys() {
         let resp = test::call_service(&app, req).await;
 
         // API returns 200 OK even for errors
-        assert!(resp.status().is_success());
+        let resp_status = resp.status();
 
         let json: Value = test::read_body_json(resp).await;
+        assert!(resp_status.is_success() || json.get("error").is_some());
         if json.get("error").is_some() || json.get("code").is_some() {
             println!("Declare script key type {key_type} returned error: {json:?}");
         }

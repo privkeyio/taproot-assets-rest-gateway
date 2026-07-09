@@ -1,4 +1,4 @@
-use super::{handle_result, validate_asset_id, validate_group_key};
+use super::{handle_result, parse_upstream, validate_asset_id, validate_group_key};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
 use actix_web::{web, HttpResponse};
@@ -59,10 +59,7 @@ pub async fn burn_assets(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -79,10 +76,7 @@ pub async fn list_burns(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 async fn burn(

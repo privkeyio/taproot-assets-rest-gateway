@@ -1,4 +1,4 @@
-use super::handle_result;
+use super::{handle_result, parse_upstream};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
 use actix_web::{web, HttpResponse};
@@ -183,10 +183,7 @@ pub async fn mint_asset(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -203,10 +200,7 @@ pub async fn get_balance(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -223,10 +217,7 @@ pub async fn get_groups(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -244,10 +235,7 @@ pub async fn get_meta(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -265,10 +253,7 @@ pub async fn get_mint_batches(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -291,10 +276,7 @@ pub async fn list_all_mint_batches(
         return Ok(serde_json::json!({ "batches": [] }));
     }
 
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -312,10 +294,7 @@ pub async fn cancel_mint(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -334,10 +313,7 @@ pub async fn fund_mint(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -356,10 +332,7 @@ pub async fn finalize_mint(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -378,10 +351,7 @@ pub async fn seal_mint(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -398,10 +368,7 @@ pub async fn get_transfers(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -420,10 +387,7 @@ pub async fn register_transfer(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -440,10 +404,7 @@ pub async fn get_utxos(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 async fn list_handler(

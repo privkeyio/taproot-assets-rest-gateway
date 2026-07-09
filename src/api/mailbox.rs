@@ -1,5 +1,5 @@
-use super::handle_result;
 use super::mailbox_auth::{generate_challenge, validate_authentication};
+use super::{handle_result, parse_upstream};
 use crate::database::SharedDatabase;
 use crate::error::AppError;
 use crate::monitoring::SharedMonitoring;
@@ -88,10 +88,7 @@ pub async fn get_mailbox_info(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -110,10 +107,7 @@ pub async fn receive_mail(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -132,10 +126,7 @@ pub async fn send_mail(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -154,10 +145,7 @@ pub async fn remove_message(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 async fn info(

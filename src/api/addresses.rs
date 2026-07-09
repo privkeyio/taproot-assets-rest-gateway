@@ -1,4 +1,4 @@
-use super::handle_result;
+use super::{handle_result, parse_upstream};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
 use actix_web::{web, HttpResponse};
@@ -227,10 +227,7 @@ pub async fn decode_address(
         .await
         .map_err(AppError::RequestError)?;
 
-    response
-        .json::<Addr>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Addr>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -258,10 +255,7 @@ pub async fn receive_events(
         );
     }
 
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 // Handler functions for actix-web routes

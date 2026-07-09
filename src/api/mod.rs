@@ -91,6 +91,22 @@ pub fn validate_integer_param(value: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Deserializes a tapd response, surfacing non-2xx statuses as errors instead
+/// of relaying the upstream error body with a 200.
+pub async fn parse_upstream<T: serde::de::DeserializeOwned>(
+    response: reqwest::Response,
+) -> Result<T, AppError> {
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(AppError::UpstreamError {
+            status: status.as_u16(),
+            body,
+        });
+    }
+    response.json::<T>().await.map_err(AppError::RequestError)
+}
+
 pub fn handle_result<T: serde::Serialize>(result: Result<T, AppError>) -> HttpResponse {
     match result {
         Ok(value) => HttpResponse::Ok().json(value),

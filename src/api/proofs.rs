@@ -1,4 +1,4 @@
-use super::handle_result;
+use super::{handle_result, parse_upstream};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
 use actix_web::{web, HttpResponse};
@@ -48,10 +48,7 @@ pub async fn decode_proof(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -70,10 +67,7 @@ pub async fn export_proof(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -92,10 +86,7 @@ pub async fn unpack_proof_file(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -117,10 +108,7 @@ pub async fn verify_proof(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 async fn decode(
