@@ -118,3 +118,35 @@ pub fn handle_result<T: serde::Serialize>(result: Result<T, AppError>) -> HttpRe
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn hex_of(len: usize) -> String {
+        "a".repeat(len)
+    }
+
+    #[test]
+    fn test_validate_asset_id_requires_64_hex_chars() {
+        assert!(validate_asset_id(&hex_of(64)).is_ok());
+        assert!(validate_asset_id(&hex_of(63)).is_err());
+        assert!(validate_asset_id(&hex_of(66)).is_err());
+        assert!(validate_asset_id("").is_err());
+        assert!(validate_asset_id(&"z".repeat(64)).is_err());
+    }
+
+    #[test]
+    fn test_validate_group_key_accepts_x_only_and_compressed() {
+        assert!(validate_group_key(&hex_of(64)).is_ok());
+        assert!(validate_group_key(&hex_of(66)).is_ok());
+        assert!(validate_group_key(&hex_of(65)).is_err());
+        assert!(validate_group_key("not-hex").is_err());
+    }
+
+    #[test]
+    fn test_validate_group_key_rejects_traversal() {
+        assert!(validate_group_key("../../etc/passwd").is_err());
+        assert!(validate_group_key("%2e%2e%2fadmin").is_err());
+    }
+}

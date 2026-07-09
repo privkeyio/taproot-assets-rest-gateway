@@ -696,3 +696,33 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         web::resource("/wallet/virtual-psbt/sign").route(web::post().to(sign_virtual_psbt_handler)),
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_backup_mode_serializes_to_upstream_enum_names() {
+        assert_eq!(serde_json::to_value(BackupMode::Raw).unwrap(), "RAW");
+        assert_eq!(
+            serde_json::to_value(BackupMode::Compact).unwrap(),
+            "COMPACT"
+        );
+        assert_eq!(
+            serde_json::to_value(BackupMode::Optimistic).unwrap(),
+            "OPTIMISTIC"
+        );
+    }
+
+    #[test]
+    fn test_export_backup_omits_mode_when_unset() {
+        let body = serde_json::to_value(ExportBackupRequest { mode: None }).unwrap();
+        assert_eq!(body, serde_json::json!({}));
+    }
+
+    #[test]
+    fn test_export_backup_rejects_unknown_mode() {
+        let parsed: Result<ExportBackupRequest, _> = serde_json::from_str(r#"{"mode":"TURBO"}"#);
+        assert!(parsed.is_err());
+    }
+}

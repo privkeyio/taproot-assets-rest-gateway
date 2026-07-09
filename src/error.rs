@@ -109,3 +109,35 @@ impl AppError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_upstream_error_preserves_status() {
+        let err = AppError::UpstreamError {
+            status: 404,
+            body: "not found".to_string(),
+        };
+        assert_eq!(err.status_code(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_upstream_error_falls_back_on_invalid_status() {
+        let err = AppError::UpstreamError {
+            status: 0,
+            body: String::new(),
+        };
+        assert_eq!(err.status_code(), StatusCode::BAD_GATEWAY);
+    }
+
+    #[test]
+    fn test_upstream_error_message_includes_body() {
+        let err = AppError::UpstreamError {
+            status: 400,
+            body: "invalid confirmation text".to_string(),
+        };
+        assert!(err.to_string().contains("invalid confirmation text"));
+    }
+}
