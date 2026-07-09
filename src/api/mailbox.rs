@@ -32,7 +32,7 @@ pub struct SendRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RemoveMessageRequest {
     pub receiver_id: String,
-    pub message_ids: Vec<serde_json::Value>,
+    pub message_ids: Vec<u64>,
     pub signature: String,
 }
 

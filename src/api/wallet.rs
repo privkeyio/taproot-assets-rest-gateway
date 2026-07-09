@@ -79,9 +79,19 @@ pub struct VirtualPsbtSignRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum BackupMode {
+    Raw,
+    Compact,
+    Optimistic,
+}
+
+/// When `mode` is omitted the field is not forwarded, so tapd applies its
+/// protobuf zero value of `RAW`.
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ExportBackupRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub mode: Option<serde_json::Value>,
+    pub mode: Option<BackupMode>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

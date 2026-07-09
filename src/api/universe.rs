@@ -1,4 +1,4 @@
-use super::{handle_result, validate_hex_param, validate_integer_param};
+use super::{handle_result, validate_group_key, validate_hex_param, validate_integer_param};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
 use actix_web::{web, HttpRequest, HttpResponse};
@@ -664,7 +664,7 @@ async fn fetch_supply_commit_handler(
     path: web::Path<String>,
 ) -> HttpResponse {
     let group_key_str = path.into_inner();
-    if let Err(e) = validate_hex_param(&group_key_str) {
+    if let Err(e) = validate_group_key(&group_key_str) {
         return handle_result::<serde_json::Value>(Err(e));
     }
     handle_result(
@@ -687,7 +687,7 @@ async fn insert_supply_commit_handler(
     req: web::Json<InsertSupplyCommitRequest>,
 ) -> HttpResponse {
     let group_key_str = path.into_inner();
-    if let Err(e) = validate_hex_param(&group_key_str) {
+    if let Err(e) = validate_group_key(&group_key_str) {
         return handle_result::<serde_json::Value>(Err(e));
     }
     handle_result(
@@ -727,7 +727,7 @@ async fn fetch_supply_leaves_handler(
     path: web::Path<String>,
 ) -> HttpResponse {
     let group_key_str = path.into_inner();
-    if let Err(e) = validate_hex_param(&group_key_str) {
+    if let Err(e) = validate_group_key(&group_key_str) {
         return handle_result::<serde_json::Value>(Err(e));
     }
     handle_result(
@@ -750,7 +750,7 @@ async fn update_supply_commit_handler(
     req: web::Json<UpdateSupplyCommitRequest>,
 ) -> HttpResponse {
     let group_key_str = path.into_inner();
-    if let Err(e) = validate_hex_param(&group_key_str) {
+    if let Err(e) = validate_group_key(&group_key_str) {
         return handle_result::<serde_json::Value>(Err(e));
     }
     handle_result(
