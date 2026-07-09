@@ -54,6 +54,33 @@ pub fn validate_path_param(value: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+const ASSET_ID_HEX_LEN: usize = 64;
+const GROUP_KEY_HEX_LENS: [usize; 2] = [64, 66];
+
+pub fn validate_asset_id(value: &str) -> Result<(), AppError> {
+    validate_hex_param(value)?;
+    if value.len() != ASSET_ID_HEX_LEN {
+        return Err(AppError::InvalidInput(format!(
+            "Invalid asset ID: expected {ASSET_ID_HEX_LEN} hex characters, got {}",
+            value.len()
+        )));
+    }
+    Ok(())
+}
+
+/// tapd accepts a group key as either a 32-byte x-only or a 33-byte
+/// compressed public key, so both hex lengths are valid.
+pub fn validate_group_key(value: &str) -> Result<(), AppError> {
+    validate_hex_param(value)?;
+    if !GROUP_KEY_HEX_LENS.contains(&value.len()) {
+        return Err(AppError::InvalidInput(format!(
+            "Invalid group key: expected 64 or 66 hex characters, got {}",
+            value.len()
+        )));
+    }
+    Ok(())
+}
+
 pub fn validate_integer_param(value: &str) -> Result<(), AppError> {
     if value.parse::<u64>().is_err() {
         return Err(AppError::InvalidInput(format!(
