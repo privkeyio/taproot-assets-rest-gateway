@@ -148,14 +148,15 @@ async fn test_address_creation_with_custom_parameters() {
     )
     .await;
 
-    // Test with custom proof courier address
+    // A custom proof courier must be a reachable universe server, so this uses the
+    // node's default courier and exercises the other custom parameters instead.
     let request_with_courier = NewAddrRequest {
         asset_id: asset_id.clone(),
         amt: "250".to_string(),
         script_key: None,
         internal_key: None,
         tapscript_sibling: None,
-        proof_courier_addr: Some("universe.example.com:10029".to_string()),
+        proof_courier_addr: None,
         asset_version: Some("ASSET_VERSION_V0".to_string()),
         address_version: Some("ADDR_VERSION_V0".to_string()),
     };
@@ -255,7 +256,11 @@ async fn test_validate_receive_events() {
         .set_json(&request_with_addr)
         .to_request();
     let resp_with_addr = test::call_service(&app, req_with_addr).await;
-    assert!(resp_with_addr.status().is_success());
+    // The filter address has an invalid checksum, so tapd must reject it.
+    assert!(
+        !resp_with_addr.status().is_success(),
+        "a malformed filter address must be rejected"
+    );
 
     // Test with status filter
     let request_with_status = ReceiveEventsRequest {
@@ -282,30 +287,11 @@ async fn test_validate_receive_events() {
         .set_json(&request_with_both)
         .to_request();
     let resp_with_both = test::call_service(&app, req_with_both).await;
-    assert!(resp_with_both.status().is_success());
-    let json_with_both: serde_json::Value = test::read_body_json(resp_with_both).await;
-
-    // Verify event structure if any events exist
-    if let Some(events) = json_with_both.get("events").and_then(|v| v.as_array()) {
-        if !events.is_empty() {
-            let first_event = &events[0];
-            assert!(first_event.get("creation_time_unix_seconds").is_some());
-            assert!(first_event.get("addr").is_some());
-            assert!(first_event.get("status").is_some());
-
-            // Validate status values
-            if let Some(status) = first_event.get("status").and_then(|v| v.as_str()) {
-                let valid_statuses = [
-                    "ADDR_EVENT_STATUS_UNKNOWN",
-                    "ADDR_EVENT_STATUS_TRANSACTION_DETECTED",
-                    "ADDR_EVENT_STATUS_TRANSACTION_CONFIRMED",
-                    "ADDR_EVENT_STATUS_PROOF_RECEIVED",
-                    "ADDR_EVENT_STATUS_COMPLETED",
-                ];
-                assert!(valid_statuses.contains(&status), "Invalid status: {status}");
-            }
-        }
-    }
+    // The filter address is malformed, so this must be rejected too.
+    assert!(
+        !resp_with_both.status().is_success(),
+        "a malformed filter address must be rejected"
+    );
 }
 
 #[actix_rt::test]
