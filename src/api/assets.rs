@@ -1,4 +1,4 @@
-use super::{handle_result, parse_upstream, with_query};
+use super::{handle_result, parse_upstream, validate_hex_param, with_query};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
 use actix_web::{web, HttpRequest, HttpResponse};
@@ -513,6 +513,9 @@ async fn meta_handler(
     path: web::Path<String>,
 ) -> HttpResponse {
     let asset_id = path.into_inner();
+    if let Err(e) = validate_hex_param(&asset_id) {
+        return handle_result::<serde_json::Value>(Err(e));
+    }
     handle_result(
         get_meta(
             client.as_ref(),
@@ -533,6 +536,9 @@ async fn mint_batches_handler(
     path: web::Path<String>,
 ) -> HttpResponse {
     let batch_key = path.into_inner();
+    if let Err(e) = validate_hex_param(&batch_key) {
+        return handle_result::<serde_json::Value>(Err(e));
+    }
     handle_result(
         get_mint_batches(
             client.as_ref(),

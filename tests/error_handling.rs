@@ -27,12 +27,11 @@ async fn test_invalid_asset_id_handling() {
         ))
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_client_error() || resp.status().is_success());
-
-    if resp.status().is_success() {
-        let json: Value = test::read_body_json(resp).await;
-        assert!(json.get("error").is_some() || json.get("code").is_some());
-    }
+    assert!(
+        resp.status().is_client_error(),
+        "a non-hex asset id must be rejected, got {}",
+        resp.status()
+    );
 }
 
 #[actix_rt::test]
@@ -287,7 +286,11 @@ async fn test_invalid_hex_encoding() {
         ))
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_client_error() || resp.status().is_success());
+    assert!(
+        resp.status().is_client_error(),
+        "invalid hex must be rejected, got {}",
+        resp.status()
+    );
 }
 
 #[actix_rt::test]
@@ -316,5 +319,36 @@ async fn test_missing_required_fields() {
     if resp.status().is_success() {
         let json: Value = test::read_body_json(resp).await;
         assert!(json.get("error").is_some() || json.get("code").is_some());
+    }
+}
+
+/// Regression test: several handlers interpolated an unvalidated path parameter
+/// into the upstream URL, so invalid input reached tapd as a 500 instead of
+/// being rejected. `validate_hex_param` is also what blocks path traversal.
+#[actix_rt::test]
+#[serial]
+async fn test_path_params_are_validated() {
+    let (client, base_url, macaroon_hex, _) = setup().await;
+    let app = test::init_service(
+        App::new()
+            .app_data(client.clone())
+            .app_data(base_url.clone())
+            .app_data(macaroon_hex.clone())
+            .configure(configure),
+    )
+    .await;
+
+    let bad_paths = [
+        "/v1/taproot-assets/assets/meta/asset-id/not_hex_123",
+        "/v1/taproot-assets/assets/mint/batches/not_hex_123",
+    ];
+    for uri in bad_paths {
+        let req = test::TestRequest::get().uri(uri).to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(
+            resp.status(),
+            actix_web::http::StatusCode::BAD_REQUEST,
+            "{uri} should be rejected with 400"
+        );
     }
 }

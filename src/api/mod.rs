@@ -172,6 +172,15 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_hex_param_rejects_non_hex_and_traversal() {
+        assert!(validate_hex_param(&hex_of(64)).is_ok());
+        assert!(validate_hex_param("invalid_asset_id_123").is_err());
+        assert!(validate_hex_param("../../etc/passwd").is_err());
+        assert!(validate_hex_param("..%2f..%2fgetinfo").is_err());
+        assert!(validate_hex_param("").is_err());
+    }
+
+    #[test]
     fn test_with_query_appends_and_preserves() {
         let base = "https://host/v1/taproot-assets/burns".to_string();
         assert_eq!(with_query(base.clone(), ""), base);
