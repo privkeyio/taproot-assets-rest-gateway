@@ -115,3 +115,4 @@ yarn.lock
 *.pid
 *.seed
 *.pid.lock
+itest/compose.log

@@ -162,6 +162,7 @@ async fn test_very_long_asset_names() {
     )
     .await;
 
+    // tapd caps asset names at 64 bytes, so this must be rejected, not accepted.
     let long_name = format!("{}-{}", "a".repeat(255), Uuid::new_v4());
     let req = json!({
         "asset": {
@@ -179,7 +180,10 @@ async fn test_very_long_asset_names() {
             .to_request(),
     )
     .await;
-    assert!(resp.status().is_success());
+    assert!(
+        !resp.status().is_success(),
+        "an asset name over 64 bytes must be rejected"
+    );
 }
 
 #[actix_rt::test]
@@ -330,7 +334,11 @@ async fn test_base64_encoding_edge_cases() {
                 .to_request(),
         )
         .await;
-        assert!(resp.status().is_success() || resp.status().is_client_error());
+        // Every one of these is an invalid proof, so tapd must reject it.
+        assert!(
+            !resp.status().is_success(),
+            "case {case:?} should be rejected"
+        );
     }
 }
 
