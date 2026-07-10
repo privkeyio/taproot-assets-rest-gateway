@@ -32,7 +32,6 @@ Fixes #(issue)
 - [ ] I have made corresponding changes to the documentation
 - [ ] My changes generate no new warnings
 - [ ] I have run `cargo fmt` and `cargo clippy`
-- [ ] I have updated the CHANGELOG.md if applicable
 - [ ] I have tested my changes with both `TLS_VERIFY=true` and `TLS_VERIFY=false`
 
 ## Screenshots (if applicable)
