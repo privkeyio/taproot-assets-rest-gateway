@@ -2,7 +2,7 @@ use actix_web::{test, App};
 use serde_json::Value;
 use serial_test::serial;
 use taproot_assets_rest_gateway::api::addresses::NewAddrRequest;
-use taproot_assets_rest_gateway::api::burn::BurnRequest;
+use taproot_assets_rest_gateway::api::burn::{AssetSpecifier, BurnRequest};
 use taproot_assets_rest_gateway::api::routes::configure;
 use taproot_assets_rest_gateway::api::send::SendRequest;
 use taproot_assets_rest_gateway::tests::setup::{mint_test_asset, setup};
@@ -87,8 +87,10 @@ async fn test_complete_asset_lifecycle() {
 
     // Burn assets
     let burn_req = BurnRequest {
-        asset_id,
-        asset_id_str: None,
+        asset_specifier: AssetSpecifier {
+            asset_id_str: Some(asset_id),
+            group_key_str: None,
+        },
         amount_to_burn: "50".to_string(),
         confirmation_text: "assets will be destroyed".to_string(),
         note: None,

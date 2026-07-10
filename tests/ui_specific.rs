@@ -463,7 +463,7 @@ async fn test_confirmation_dialog_data() {
     .await;
 
     let burn_req = json!({
-        "asset_id": asset_id,
+        "asset_specifier": { "asset_id_str": asset_id },
         "amount_to_burn": "10",
         "confirmation_text": "assets will be destroyed"
     });

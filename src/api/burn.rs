@@ -1,4 +1,4 @@
-use super::handle_result;
+use super::{handle_result, validate_asset_id, validate_group_key};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
 use actix_web::{web, HttpResponse};
@@ -7,9 +7,31 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, instrument};
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct BurnRequest {
-    pub asset_id: String,
+pub struct AssetSpecifier {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub asset_id_str: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_key_str: Option<String>,
+}
+
+impl AssetSpecifier {
+    fn validate(&self) -> Result<(), AppError> {
+        match (self.asset_id_str.as_deref(), self.group_key_str.as_deref()) {
+            (Some(_), Some(_)) => Err(AppError::InvalidInput(
+                "asset_specifier must set exactly one of asset_id_str or group_key_str".to_string(),
+            )),
+            (None, None) => Err(AppError::InvalidInput(
+                "asset_specifier must set either asset_id_str or group_key_str".to_string(),
+            )),
+            (Some(asset_id), None) => validate_asset_id(asset_id),
+            (None, Some(group_key)) => validate_group_key(group_key),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BurnRequest {
+    pub asset_specifier: AssetSpecifier,
     pub amount_to_burn: String,
     pub confirmation_text: String,
     pub note: Option<String>,
@@ -22,7 +44,13 @@ pub async fn burn_assets(
     macaroon_hex: &str,
     request: BurnRequest,
 ) -> Result<serde_json::Value, AppError> {
-    info!("Burning assets for asset ID: {}", request.asset_id);
+    request.asset_specifier.validate()?;
+    info!(
+        asset_id_str = ?request.asset_specifier.asset_id_str,
+        group_key_str = ?request.asset_specifier.group_key_str,
+        amount_to_burn = %request.amount_to_burn,
+        "Burning assets"
+    );
     let url = format!("{base_url}/v1/taproot-assets/burn");
     let response = client
         .post(&url)
