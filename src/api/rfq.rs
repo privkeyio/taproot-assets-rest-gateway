@@ -1,4 +1,4 @@
-use super::{handle_result, parse_upstream};
+use super::{handle_result, parse_upstream, validate_hex_param};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
 use actix_web::{web, HttpRequest, HttpResponse, Result as ActixResult};
@@ -162,6 +162,9 @@ async fn buy_offer_handler(
     req: web::Json<BuyOfferRequest>,
 ) -> HttpResponse {
     let asset_id = path.into_inner();
+    if let Err(e) = validate_hex_param(&asset_id) {
+        return handle_result::<serde_json::Value>(Err(e));
+    }
     handle_result(
         buy_offer(
             client.as_ref(),
@@ -182,6 +185,9 @@ async fn buy_order_handler(
     req: web::Json<BuyOrderRequest>,
 ) -> HttpResponse {
     let asset_id = path.into_inner();
+    if let Err(e) = validate_hex_param(&asset_id) {
+        return handle_result::<serde_json::Value>(Err(e));
+    }
     handle_result(
         buy_order(
             client.as_ref(),
@@ -376,6 +382,9 @@ async fn sell_offer_handler(
     req: web::Json<SellOfferRequest>,
 ) -> HttpResponse {
     let asset_id = path.into_inner();
+    if let Err(e) = validate_hex_param(&asset_id) {
+        return handle_result::<serde_json::Value>(Err(e));
+    }
     handle_result(
         sell_offer(
             client.as_ref(),
@@ -396,6 +405,9 @@ async fn sell_order_handler(
     req: web::Json<SellOrderRequest>,
 ) -> HttpResponse {
     let asset_id = path.into_inner();
+    if let Err(e) = validate_hex_param(&asset_id) {
+        return handle_result::<serde_json::Value>(Err(e));
+    }
     handle_result(
         sell_order(
             client.as_ref(),
