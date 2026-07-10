@@ -1,6 +1,6 @@
 [package]
 name = "taproot-assets-rest-gateway"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 description = "REST API proxy for Lightning Labs' Taproot Assets"
 readme = "README.md"

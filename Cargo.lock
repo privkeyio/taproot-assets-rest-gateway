@@ -2740,7 +2740,7 @@ dependencies = [
 
 [[package]]
 name = "taproot-assets-rest-gateway"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "actix-cors",
  "actix-http",
