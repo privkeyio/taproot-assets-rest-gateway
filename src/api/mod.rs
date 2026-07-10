@@ -92,6 +92,17 @@ pub fn validate_integer_param(value: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Appends the caller's query string to an upstream URL. tapd exposes filters,
+/// pagination and required parameters such as `group_by` this way, so dropping
+/// the query silently returns unfiltered results.
+pub fn with_query(mut url: String, query: &str) -> String {
+    if !query.is_empty() {
+        url.push('?');
+        url.push_str(query);
+    }
+    url
+}
+
 /// Deserializes a tapd response, surfacing non-2xx statuses as errors instead
 /// of relaying the upstream error body with a 200.
 pub async fn parse_upstream<T: serde::de::DeserializeOwned>(
@@ -158,6 +169,16 @@ mod tests {
     fn test_validate_group_key_rejects_traversal() {
         assert!(validate_group_key("../../etc/passwd").is_err());
         assert!(validate_group_key("%2e%2e%2fadmin").is_err());
+    }
+
+    #[test]
+    fn test_with_query_appends_and_preserves() {
+        let base = "https://host/v1/taproot-assets/burns".to_string();
+        assert_eq!(with_query(base.clone(), ""), base);
+        assert_eq!(
+            with_query(base.clone(), "asset_id=abc&limit=2"),
+            "https://host/v1/taproot-assets/burns?asset_id=abc&limit=2"
+        );
     }
 
     async fn body_of(resp: HttpResponse) -> serde_json::Value {

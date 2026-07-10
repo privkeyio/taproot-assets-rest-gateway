@@ -92,7 +92,7 @@ async fn test_get_balance() {
     )
     .await;
     let req = test::TestRequest::get()
-        .uri("/v1/taproot-assets/assets/balance")
+        .uri("/v1/taproot-assets/assets/balance?asset_id=true")
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());

@@ -7,7 +7,7 @@ use taproot_assets_rest_gateway::api::proofs::ExportProofRequest;
 use taproot_assets_rest_gateway::api::routes::configure;
 use taproot_assets_rest_gateway::api::send::SendRequest;
 use taproot_assets_rest_gateway::tests::setup::{
-    assert_status_matches_body, mint_test_asset, setup, setup_without_assets,
+    assert_status_matches_body, mint_test_asset, setup, setup_without_assets, txid_to_internal_hex,
 };
 
 #[actix_rt::test]
@@ -468,5 +468,83 @@ async fn test_transfer_timestamps_and_fees() {
                 assert!(transfer["anchor_tx_block_hash"].is_object());
             }
         }
+    }
+}
+
+/// Regression test: the gateway used to drop query strings, so filtered
+/// requests silently returned the unfiltered result set.
+///
+/// Note the upstream inconsistency: `/burns` takes `asset_id` as base64, while
+/// `/assets/transfers` takes `anchor_txid` as hex in internal (reversed) order.
+#[actix_rt::test]
+#[serial]
+async fn test_transfers_filter_is_forwarded() {
+    let (client, base_url, macaroon_hex) = setup_without_assets().await;
+    let app = test::init_service(
+        App::new()
+            .app_data(client.clone())
+            .app_data(base_url.clone())
+            .app_data(macaroon_hex.clone())
+            .configure(configure),
+    )
+    .await;
+
+    let req = test::TestRequest::get()
+        .uri("/v1/taproot-assets/assets/transfers")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    let status = resp.status();
+    let all: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(status, &all);
+    assert!(status.is_success());
+
+    let Some(transfers) = all["transfers"].as_array().filter(|t| !t.is_empty()) else {
+        return;
+    };
+    let total = transfers.len();
+    let anchor = transfers[0]["anchor_tx_hash"]
+        .as_str()
+        .expect("anchor_tx_hash")
+        .to_string();
+
+    // No transfer is anchored to an all-zero txid, so a forwarded filter
+    // returns nothing. If the query were dropped we would get all of them.
+    let req = test::TestRequest::get()
+        .uri(&format!(
+            "/v1/taproot-assets/assets/transfers?anchor_txid={}",
+            "0".repeat(64)
+        ))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    let status = resp.status();
+    let none: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(status, &none);
+    assert!(status.is_success());
+    let matched = none["transfers"].as_array().map(|t| t.len()).unwrap_or(0);
+    assert_eq!(
+        matched, 0,
+        "filter was dropped: got {matched} transfers, unfiltered total is {total}"
+    );
+
+    // Filtering by a real anchor txid returns only that transfer.
+    let req = test::TestRequest::get()
+        .uri(&format!(
+            "/v1/taproot-assets/assets/transfers?anchor_txid={}",
+            txid_to_internal_hex(&anchor)
+        ))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    let status = resp.status();
+    let filtered: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(status, &filtered);
+    assert!(status.is_success());
+
+    let matched = filtered["transfers"].as_array().expect("transfers");
+    assert!(
+        !matched.is_empty(),
+        "the anchoring transfer must be returned"
+    );
+    for t in matched {
+        assert_eq!(t["anchor_tx_hash"].as_str(), Some(anchor.as_str()));
     }
 }
