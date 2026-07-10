@@ -150,10 +150,7 @@ pub async fn list_addresses(
         .await
         .map_err(AppError::RequestError)?;
 
-    let json = response
-        .json::<HashMap<String, Vec<Addr>>>()
-        .await
-        .map_err(AppError::RequestError)?;
+    let json = parse_upstream::<HashMap<String, Vec<Addr>>>(response).await?;
 
     let mut addresses = json.get("addrs").cloned().unwrap_or_default();
 

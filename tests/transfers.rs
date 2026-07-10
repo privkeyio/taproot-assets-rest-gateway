@@ -7,8 +7,10 @@ use taproot_assets_rest_gateway::api::proofs::ExportProofRequest;
 use taproot_assets_rest_gateway::api::routes::configure;
 use taproot_assets_rest_gateway::api::send::SendRequest;
 use taproot_assets_rest_gateway::tests::setup::{
-    assert_status_matches_body, mint_test_asset, setup, setup_without_assets, txid_to_internal_hex,
+    assert_status_matches_body, generate_blocks_with_retry, mint_test_asset, setup,
+    setup_without_assets, txid_to_internal_hex,
 };
+use tokio::time::{sleep, Duration};
 
 #[actix_rt::test]
 #[serial]
@@ -59,16 +61,53 @@ async fn test_complete_transfer_workflow() {
         label: Some("Transfer test".to_string()),
         skip_proof_courier_ping_check: Some(true),
     };
-    let send_resp = test::call_service(
+    let send_body = serde_json::to_value(&send_req).expect("serialize send request");
+
+    let resp = test::call_service(
         &app,
         test::TestRequest::post()
             .uri("/v1/taproot-assets/send")
-            .set_json(&send_req)
+            .set_json(&send_body)
             .to_request(),
     )
     .await;
-    assert!(send_resp.status().is_success());
-    let _send_json: Value = test::read_body_json(send_resp).await;
+    let mut send_status = resp.status();
+    let mut send_json: Value = test::read_body_json(resp).await;
+
+    // A send needs confirmed on-chain coins to anchor with. Sibling tests leave
+    // change unconfirmed, so mine and retry once on a funding failure rather
+    // than mining unconditionally, which would perturb their UTXO state.
+    let funding_failure = |body: &Value| {
+        let msg = body["message"].as_str().unwrap_or_default();
+        msg.contains("un-confirmed")
+            || msg.contains("not enough witness outputs")
+            || msg.contains("insufficient")
+    };
+    if !send_status.is_success() && funding_failure(&send_json) {
+        let rpc_url = std::env::var("BITCOIN_RPC_URL").unwrap_or_default();
+        let rpc_user = std::env::var("BITCOIN_RPC_USER").unwrap_or_default();
+        let rpc_pass = std::env::var("BITCOIN_RPC_PASS").unwrap_or_default();
+        let _ =
+            generate_blocks_with_retry(client.as_ref(), &rpc_url, &rpc_user, &rpc_pass, 6).await;
+        sleep(Duration::from_secs(2)).await;
+
+        let resp = test::call_service(
+            &app,
+            test::TestRequest::post()
+                .uri("/v1/taproot-assets/send")
+                .set_json(&send_body)
+                .to_request(),
+        )
+        .await;
+        send_status = resp.status();
+        send_json = test::read_body_json(resp).await;
+    }
+
+    assert_status_matches_body(send_status, &send_json);
+    assert!(
+        send_status.is_success(),
+        "send must succeed: {send_status} {send_json}"
+    );
 
     // Step 3: List transfers
     let list_resp = test::call_service(

@@ -1,11 +1,11 @@
 use actix_web::{test, App};
-use serde_json::Value;
+use serde_json::{json, Value};
 use serial_test::serial;
 use taproot_assets_rest_gateway::api::addresses::NewAddrRequest;
 use taproot_assets_rest_gateway::api::routes::configure;
 use taproot_assets_rest_gateway::api::send::SendRequest;
 use taproot_assets_rest_gateway::tests::setup::{
-    assert_status_matches_body, mint_test_asset, setup,
+    assert_status_matches_body, mint_test_asset, setup, setup_without_assets,
 };
 
 #[actix_rt::test]
@@ -318,7 +318,7 @@ async fn test_send_validation_errors() {
             .configure(configure),
     )
     .await;
-    // Test with empty addresses
+    // A send with no addresses must be rejected, not reported as success.
     let empty_request = SendRequest {
         tap_addrs: vec![],
         fee_rate: Some(300),
@@ -330,15 +330,15 @@ async fn test_send_validation_errors() {
         .set_json(&empty_request)
         .to_request();
     let empty_resp = test::call_service(&app, empty_req).await;
-    let empty_resp_status = empty_resp.status();
+    let empty_status = empty_resp.status();
     let empty_json: Value = test::read_body_json(empty_resp).await;
-    assert_status_matches_body(empty_resp_status, &empty_json);
-    if empty_json.get("error").is_some() || empty_json.get("code").is_some() {
-        println!("Empty address error: {empty_json:?}");
-    } else {
-        panic!("Expected error for empty addresses");
-    }
-    // Test with invalid address
+    assert_status_matches_body(empty_status, &empty_json);
+    assert!(
+        !empty_status.is_success(),
+        "empty addresses must be rejected"
+    );
+
+    // Likewise for a malformed address.
     let invalid_request = SendRequest {
         tap_addrs: vec!["invalid_address".to_string()],
         fee_rate: Some(300),
@@ -350,11 +350,13 @@ async fn test_send_validation_errors() {
         .set_json(&invalid_request)
         .to_request();
     let invalid_resp = test::call_service(&app, invalid_req).await;
-    assert!(invalid_resp.status().is_success() || invalid_resp.status().is_client_error());
-    if invalid_resp.status().is_success() {
-        let invalid_json: Value = test::read_body_json(invalid_resp).await;
-        assert!(invalid_json.get("error").is_some() || invalid_json.get("code").is_some());
-    }
+    let invalid_status = invalid_resp.status();
+    let invalid_json: Value = test::read_body_json(invalid_resp).await;
+    assert_status_matches_body(invalid_status, &invalid_json);
+    assert!(
+        !invalid_status.is_success(),
+        "a malformed address must be rejected"
+    );
 }
 
 #[actix_rt::test]
@@ -453,4 +455,36 @@ async fn test_send_response_structure() {
             assert!(valid_statuses.contains(&status));
         }
     }
+}
+
+/// Regression test: `send_assets` relayed tapd's response verbatim, so a failed
+/// send arrived as `200 OK` with an error body and callers could not tell it
+/// apart from success.
+#[actix_rt::test]
+#[serial]
+async fn test_failed_send_does_not_report_success() {
+    let (client, base_url, macaroon_hex) = setup_without_assets().await;
+    let app = test::init_service(
+        App::new()
+            .app_data(client.clone())
+            .app_data(base_url.clone())
+            .app_data(macaroon_hex.clone())
+            .configure(configure),
+    )
+    .await;
+
+    let req = test::TestRequest::post()
+        .uri("/v1/taproot-assets/send")
+        .set_json(json!({ "tap_addrs": [] }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    let status = resp.status();
+    let json: Value = test::read_body_json(resp).await;
+
+    assert_status_matches_body(status, &json);
+    assert!(
+        !status.is_success(),
+        "a send with no addresses must not report success: {status} {json}"
+    );
+    assert_eq!(json["code"].as_i64(), Some(2));
 }

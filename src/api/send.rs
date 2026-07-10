@@ -1,4 +1,4 @@
-use super::handle_result;
+use super::{handle_result, parse_upstream};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
 use actix_web::{web, HttpResponse};
@@ -33,7 +33,7 @@ pub async fn send_assets(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response.json().await.map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 async fn send_handler(
