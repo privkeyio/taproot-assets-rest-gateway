@@ -90,7 +90,7 @@ async fn test_concurrent_transfer_performance() {
     let _ = test::call_service(
         &app,
         test::TestRequest::get()
-            .uri("/v1/taproot-assets/assets/balance")
+            .uri("/v1/taproot-assets/assets/balance?asset_id=true")
             .to_request(),
     )
     .await;
@@ -206,7 +206,7 @@ async fn test_high_frequency_balance_queries() {
         let _ = test::call_service(
             &app,
             test::TestRequest::get()
-                .uri("/v1/taproot-assets/assets/balance")
+                .uri("/v1/taproot-assets/assets/balance?asset_id=true")
                 .to_request(),
         )
         .await;
@@ -217,7 +217,7 @@ async fn test_high_frequency_balance_queries() {
 
     for _ in 0..num_queries {
         let req = test::TestRequest::get()
-            .uri("/v1/taproot-assets/assets/balance")
+            .uri("/v1/taproot-assets/assets/balance?asset_id=true")
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert!(resp.status().is_success());
@@ -403,7 +403,7 @@ async fn test_api_response_time_percentiles() {
     let endpoints = vec![
         "/v1/taproot-assets/getinfo",
         "/v1/taproot-assets/assets",
-        "/v1/taproot-assets/assets/balance",
+        "/v1/taproot-assets/assets/balance?asset_id=true",
         "/v1/taproot-assets/addrs",
     ];
 

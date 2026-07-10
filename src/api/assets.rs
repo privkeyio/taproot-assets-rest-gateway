@@ -1,7 +1,7 @@
-use super::{handle_result, parse_upstream};
+use super::{handle_result, parse_upstream, with_query};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument};
@@ -152,9 +152,10 @@ pub async fn list_assets(
     client: &Client,
     base_url: &str,
     macaroon_hex: &str,
+    query: &str,
 ) -> Result<Vec<Asset>, AppError> {
     info!("Listing assets");
-    let url = format!("{base_url}/v1/taproot-assets/assets");
+    let url = with_query(format!("{base_url}/v1/taproot-assets/assets"), query);
     let response = client
         .get(&url)
         .header("Grpc-Metadata-macaroon", macaroon_hex)
@@ -191,9 +192,13 @@ pub async fn get_balance(
     client: &Client,
     base_url: &str,
     macaroon_hex: &str,
+    query: &str,
 ) -> Result<serde_json::Value, AppError> {
     info!("Fetching asset balance");
-    let url = format!("{base_url}/v1/taproot-assets/assets/balance");
+    let url = with_query(
+        format!("{base_url}/v1/taproot-assets/assets/balance"),
+        query,
+    );
     let response = client
         .get(&url)
         .header("Grpc-Metadata-macaroon", macaroon_hex)
@@ -226,9 +231,13 @@ pub async fn get_meta(
     base_url: &str,
     macaroon_hex: &str,
     asset_id: &str,
+    query: &str,
 ) -> Result<serde_json::Value, AppError> {
     info!("Fetching meta for asset ID: {}", asset_id);
-    let url = format!("{base_url}/v1/taproot-assets/assets/meta/asset-id/{asset_id}");
+    let url = with_query(
+        format!("{base_url}/v1/taproot-assets/assets/meta/asset-id/{asset_id}"),
+        query,
+    );
     let response = client
         .get(&url)
         .header("Grpc-Metadata-macaroon", macaroon_hex)
@@ -244,9 +253,13 @@ pub async fn get_mint_batches(
     base_url: &str,
     macaroon_hex: &str,
     batch_key: &str,
+    query: &str,
 ) -> Result<serde_json::Value, AppError> {
     info!("Fetching mint batches for batch key: {}", batch_key);
-    let url = format!("{base_url}/v1/taproot-assets/assets/mint/batches/{batch_key}");
+    let url = with_query(
+        format!("{base_url}/v1/taproot-assets/assets/mint/batches/{batch_key}"),
+        query,
+    );
     let response = client
         .get(&url)
         .header("Grpc-Metadata-macaroon", macaroon_hex)
@@ -359,9 +372,13 @@ pub async fn get_transfers(
     client: &Client,
     base_url: &str,
     macaroon_hex: &str,
+    query: &str,
 ) -> Result<serde_json::Value, AppError> {
     info!("Fetching asset transfers");
-    let url = format!("{base_url}/v1/taproot-assets/assets/transfers");
+    let url = with_query(
+        format!("{base_url}/v1/taproot-assets/assets/transfers"),
+        query,
+    );
     let response = client
         .get(&url)
         .header("Grpc-Metadata-macaroon", macaroon_hex)
@@ -395,9 +412,10 @@ pub async fn get_utxos(
     client: &Client,
     base_url: &str,
     macaroon_hex: &str,
+    query: &str,
 ) -> Result<serde_json::Value, AppError> {
     info!("Fetching asset UTXOs");
-    let url = format!("{base_url}/v1/taproot-assets/assets/utxos");
+    let url = with_query(format!("{base_url}/v1/taproot-assets/assets/utxos"), query);
     let response = client
         .get(&url)
         .header("Grpc-Metadata-macaroon", macaroon_hex)
@@ -408,6 +426,7 @@ pub async fn get_utxos(
 }
 
 async fn list_handler(
+    http_req: HttpRequest,
     client: web::Data<Client>,
     base_url: web::Data<BaseUrl>,
     macaroon_hex: web::Data<MacaroonHex>,
@@ -416,6 +435,7 @@ async fn list_handler(
         client.as_ref(),
         base_url.0.as_str(),
         macaroon_hex.0.as_str(),
+        http_req.query_string(),
     )
     .await
     {
@@ -454,6 +474,7 @@ async fn mint_handler(
 }
 
 async fn balance_handler(
+    http_req: HttpRequest,
     client: web::Data<Client>,
     base_url: web::Data<BaseUrl>,
     macaroon_hex: web::Data<MacaroonHex>,
@@ -463,6 +484,7 @@ async fn balance_handler(
             client.as_ref(),
             base_url.0.as_str(),
             macaroon_hex.0.as_str(),
+            http_req.query_string(),
         )
         .await,
     )
@@ -484,6 +506,7 @@ async fn groups_handler(
 }
 
 async fn meta_handler(
+    http_req: HttpRequest,
     client: web::Data<Client>,
     base_url: web::Data<BaseUrl>,
     macaroon_hex: web::Data<MacaroonHex>,
@@ -496,12 +519,14 @@ async fn meta_handler(
             base_url.0.as_str(),
             macaroon_hex.0.as_str(),
             asset_id.as_str(),
+            http_req.query_string(),
         )
         .await,
     )
 }
 
 async fn mint_batches_handler(
+    http_req: HttpRequest,
     client: web::Data<Client>,
     base_url: web::Data<BaseUrl>,
     macaroon_hex: web::Data<MacaroonHex>,
@@ -514,6 +539,7 @@ async fn mint_batches_handler(
             base_url.0.as_str(),
             macaroon_hex.0.as_str(),
             batch_key.as_str(),
+            http_req.query_string(),
         )
         .await,
     )
@@ -601,6 +627,7 @@ async fn seal_mint_handler(
 }
 
 async fn transfers_handler(
+    http_req: HttpRequest,
     client: web::Data<Client>,
     base_url: web::Data<BaseUrl>,
     macaroon_hex: web::Data<MacaroonHex>,
@@ -610,6 +637,7 @@ async fn transfers_handler(
             client.as_ref(),
             base_url.0.as_str(),
             macaroon_hex.0.as_str(),
+            http_req.query_string(),
         )
         .await,
     )
@@ -633,6 +661,7 @@ async fn register_transfer_handler(
 }
 
 async fn utxos_handler(
+    http_req: HttpRequest,
     client: web::Data<Client>,
     base_url: web::Data<BaseUrl>,
     macaroon_hex: web::Data<MacaroonHex>,
@@ -642,6 +671,7 @@ async fn utxos_handler(
             client.as_ref(),
             base_url.0.as_str(),
             macaroon_hex.0.as_str(),
+            http_req.query_string(),
         )
         .await,
     )

@@ -1,5 +1,6 @@
 use super::{
     handle_result, parse_upstream, validate_group_key, validate_hex_param, validate_integer_param,
+    with_query,
 };
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
@@ -161,9 +162,13 @@ pub async fn get_keys(
     base_url: &str,
     macaroon_hex: &str,
     asset_id: &str,
+    query: &str,
 ) -> Result<Value, AppError> {
     info!("Fetching keys for asset ID: {}", asset_id);
-    let url = format!("{base_url}/v1/taproot-assets/universe/keys/asset-id/{asset_id}");
+    let url = with_query(
+        format!("{base_url}/v1/taproot-assets/universe/keys/asset-id/{asset_id}"),
+        query,
+    );
     let response = client
         .get(&url)
         .header("Grpc-Metadata-macaroon", macaroon_hex)
@@ -179,9 +184,13 @@ pub async fn get_leaves(
     base_url: &str,
     macaroon_hex: &str,
     asset_id: &str,
+    query: &str,
 ) -> Result<Value, AppError> {
     info!("Fetching leaves for asset ID: {}", asset_id);
-    let url = format!("{base_url}/v1/taproot-assets/universe/leaves/asset-id/{asset_id}");
+    let url = with_query(
+        format!("{base_url}/v1/taproot-assets/universe/leaves/asset-id/{asset_id}"),
+        query,
+    );
     let response = client
         .get(&url)
         .header("Grpc-Metadata-macaroon", macaroon_hex)
@@ -210,6 +219,7 @@ pub async fn get_multiverse(
     parse_upstream::<Value>(response).await
 }
 
+#[allow(clippy::too_many_arguments)]
 #[instrument(skip(client, macaroon_hex))]
 pub async fn get_proofs(
     client: &Client,
@@ -219,10 +229,14 @@ pub async fn get_proofs(
     hash_str: &str,
     index: &str,
     script_key: &str,
+    query: &str,
 ) -> Result<Value, AppError> {
     info!("Fetching proofs for asset ID: {}", asset_id);
-    let url = format!(
-        "{base_url}/v1/taproot-assets/universe/proofs/asset-id/{asset_id}/{hash_str}/{index}/{script_key}"
+    let url = with_query(
+        format!(
+            "{base_url}/v1/taproot-assets/universe/proofs/asset-id/{asset_id}/{hash_str}/{index}/{script_key}"
+        ),
+        query,
     );
     let response = client
         .get(&url)
@@ -264,9 +278,13 @@ pub async fn get_roots(
     client: &Client,
     base_url: &str,
     macaroon_hex: &str,
+    query: &str,
 ) -> Result<Value, AppError> {
     info!("Fetching universe roots");
-    let url = format!("{base_url}/v1/taproot-assets/universe/roots");
+    let url = with_query(
+        format!("{base_url}/v1/taproot-assets/universe/roots"),
+        query,
+    );
     let response = client
         .get(&url)
         .header("Grpc-Metadata-macaroon", macaroon_hex)
@@ -282,9 +300,13 @@ pub async fn get_asset_roots(
     base_url: &str,
     macaroon_hex: &str,
     asset_id: &str,
+    query: &str,
 ) -> Result<Value, AppError> {
     info!("Fetching asset roots for asset ID: {}", asset_id);
-    let url = format!("{base_url}/v1/taproot-assets/universe/roots/asset-id/{asset_id}");
+    let url = with_query(
+        format!("{base_url}/v1/taproot-assets/universe/roots/asset-id/{asset_id}"),
+        query,
+    );
     let response = client
         .get(&url)
         .header("Grpc-Metadata-macaroon", macaroon_hex)
@@ -316,9 +338,13 @@ pub async fn get_asset_stats(
     client: &Client,
     base_url: &str,
     macaroon_hex: &str,
+    query: &str,
 ) -> Result<Value, AppError> {
     info!("Fetching asset stats");
-    let url = format!("{base_url}/v1/taproot-assets/universe/stats/assets");
+    let url = with_query(
+        format!("{base_url}/v1/taproot-assets/universe/stats/assets"),
+        query,
+    );
     let response = client
         .get(&url)
         .header("Grpc-Metadata-macaroon", macaroon_hex)
@@ -333,9 +359,13 @@ pub async fn get_event_stats(
     client: &Client,
     base_url: &str,
     macaroon_hex: &str,
+    query: &str,
 ) -> Result<Value, AppError> {
     info!("Fetching event stats");
-    let url = format!("{base_url}/v1/taproot-assets/universe/stats/events");
+    let url = with_query(
+        format!("{base_url}/v1/taproot-assets/universe/stats/events"),
+        query,
+    );
     let response = client
         .get(&url)
         .header("Grpc-Metadata-macaroon", macaroon_hex)
@@ -564,6 +594,7 @@ async fn info_handler(
 }
 
 async fn keys_handler(
+    http_req: HttpRequest,
     client: web::Data<Client>,
     base_url: web::Data<BaseUrl>,
     macaroon_hex: web::Data<MacaroonHex>,
@@ -573,10 +604,20 @@ async fn keys_handler(
     if let Err(e) = validate_hex_param(&asset_id) {
         return handle_result::<serde_json::Value>(Err(e));
     }
-    handle_result(get_keys(client.as_ref(), &base_url.0, &macaroon_hex.0, &asset_id).await)
+    handle_result(
+        get_keys(
+            client.as_ref(),
+            &base_url.0,
+            &macaroon_hex.0,
+            &asset_id,
+            http_req.query_string(),
+        )
+        .await,
+    )
 }
 
 async fn leaves_handler(
+    http_req: HttpRequest,
     client: web::Data<Client>,
     base_url: web::Data<BaseUrl>,
     macaroon_hex: web::Data<MacaroonHex>,
@@ -586,7 +627,16 @@ async fn leaves_handler(
     if let Err(e) = validate_hex_param(&asset_id) {
         return handle_result::<serde_json::Value>(Err(e));
     }
-    handle_result(get_leaves(client.as_ref(), &base_url.0, &macaroon_hex.0, &asset_id).await)
+    handle_result(
+        get_leaves(
+            client.as_ref(),
+            &base_url.0,
+            &macaroon_hex.0,
+            &asset_id,
+            http_req.query_string(),
+        )
+        .await,
+    )
 }
 
 async fn fetch_supply_commit_handler(
@@ -716,6 +766,7 @@ async fn multiverse_handler(
 }
 
 async fn proofs_handler(
+    http_req: HttpRequest,
     path: web::Path<(String, String, String, String)>,
     client: web::Data<Client>,
     base_url: web::Data<BaseUrl>,
@@ -738,6 +789,7 @@ async fn proofs_handler(
             &hash_str,
             &index,
             &script_key,
+            http_req.query_string(),
         )
         .await,
     )
@@ -774,14 +826,24 @@ async fn push_proof_handler(
 }
 
 async fn roots_handler(
+    http_req: HttpRequest,
     client: web::Data<Client>,
     base_url: web::Data<BaseUrl>,
     macaroon_hex: web::Data<MacaroonHex>,
 ) -> HttpResponse {
-    handle_result(get_roots(client.as_ref(), &base_url.0, &macaroon_hex.0).await)
+    handle_result(
+        get_roots(
+            client.as_ref(),
+            &base_url.0,
+            &macaroon_hex.0,
+            http_req.query_string(),
+        )
+        .await,
+    )
 }
 
 async fn asset_roots_handler(
+    http_req: HttpRequest,
     client: web::Data<Client>,
     base_url: web::Data<BaseUrl>,
     macaroon_hex: web::Data<MacaroonHex>,
@@ -791,7 +853,16 @@ async fn asset_roots_handler(
     if let Err(e) = validate_hex_param(&asset_id) {
         return handle_result::<serde_json::Value>(Err(e));
     }
-    handle_result(get_asset_roots(client.as_ref(), &base_url.0, &macaroon_hex.0, &asset_id).await)
+    handle_result(
+        get_asset_roots(
+            client.as_ref(),
+            &base_url.0,
+            &macaroon_hex.0,
+            &asset_id,
+            http_req.query_string(),
+        )
+        .await,
+    )
 }
 
 async fn stats_handler(
@@ -803,19 +874,37 @@ async fn stats_handler(
 }
 
 async fn asset_stats_handler(
+    http_req: HttpRequest,
     client: web::Data<Client>,
     base_url: web::Data<BaseUrl>,
     macaroon_hex: web::Data<MacaroonHex>,
 ) -> HttpResponse {
-    handle_result(get_asset_stats(client.as_ref(), &base_url.0, &macaroon_hex.0).await)
+    handle_result(
+        get_asset_stats(
+            client.as_ref(),
+            &base_url.0,
+            &macaroon_hex.0,
+            http_req.query_string(),
+        )
+        .await,
+    )
 }
 
 async fn event_stats_handler(
+    http_req: HttpRequest,
     client: web::Data<Client>,
     base_url: web::Data<BaseUrl>,
     macaroon_hex: web::Data<MacaroonHex>,
 ) -> HttpResponse {
-    handle_result(get_event_stats(client.as_ref(), &base_url.0, &macaroon_hex.0).await)
+    handle_result(
+        get_event_stats(
+            client.as_ref(),
+            &base_url.0,
+            &macaroon_hex.0,
+            http_req.query_string(),
+        )
+        .await,
+    )
 }
 
 async fn sync_handler(

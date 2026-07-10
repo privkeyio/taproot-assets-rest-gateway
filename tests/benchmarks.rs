@@ -24,7 +24,10 @@ async fn test_throughput_benchmark() {
     let endpoints = vec![
         ("/v1/taproot-assets/getinfo", "GetInfo"),
         ("/v1/taproot-assets/assets", "ListAssets"),
-        ("/v1/taproot-assets/assets/balance", "GetBalance"),
+        (
+            "/v1/taproot-assets/assets/balance?asset_id=true",
+            "GetBalance",
+        ),
         ("/health", "Health Check"),
     ];
 
@@ -275,7 +278,10 @@ async fn test_api_response_time_percentiles() {
     let endpoints = vec![
         ("/v1/taproot-assets/getinfo", "GetInfo"),
         ("/v1/taproot-assets/assets", "ListAssets"),
-        ("/v1/taproot-assets/assets/balance", "GetBalance"),
+        (
+            "/v1/taproot-assets/assets/balance?asset_id=true",
+            "GetBalance",
+        ),
         ("/v1/taproot-assets/addrs", "ListAddresses"),
     ];
 

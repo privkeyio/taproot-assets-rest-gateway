@@ -81,7 +81,7 @@ async fn test_complete_asset_lifecycle() {
     let balance_resp = test::call_service(
         &app,
         test::TestRequest::get()
-            .uri("/v1/taproot-assets/assets/balance")
+            .uri("/v1/taproot-assets/assets/balance?asset_id=true")
             .to_request(),
     )
     .await;

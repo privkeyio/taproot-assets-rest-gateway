@@ -79,7 +79,7 @@ async fn test_real_time_balance_updates() {
 
     let get_balance = || async {
         let req = test::TestRequest::get()
-            .uri("/v1/taproot-assets/assets/balance")
+            .uri("/v1/taproot-assets/assets/balance?asset_id=true")
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert!(resp.status().is_success());
@@ -382,7 +382,7 @@ async fn test_refresh_data_functionality() {
 
     let endpoints = vec![
         "/v1/taproot-assets/assets",
-        "/v1/taproot-assets/assets/balance",
+        "/v1/taproot-assets/assets/balance?asset_id=true",
         "/v1/taproot-assets/assets/transfers",
         "/v1/taproot-assets/addrs",
     ];

@@ -72,7 +72,7 @@ async fn test_get_asset_balance() {
     .await;
 
     let req = test::TestRequest::get()
-        .uri("/v1/taproot-assets/assets/balance")
+        .uri("/v1/taproot-assets/assets/balance?asset_id=true")
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
@@ -355,14 +355,14 @@ async fn test_asset_balance_with_filters() {
 
     // Test with include_leased
     let leased_req = test::TestRequest::get()
-        .uri("/v1/taproot-assets/assets/balance?include_leased=true")
+        .uri("/v1/taproot-assets/assets/balance?asset_id=true&include_leased=true")
         .to_request();
     let leased_resp = test::call_service(&app, leased_req).await;
     assert!(leased_resp.status().is_success());
 
     // Test with script_key_type filter
     let script_type_req = test::TestRequest::get()
-        .uri("/v1/taproot-assets/assets/balance?script_key_type.explicit_type=SCRIPT_KEY_BIP86")
+        .uri("/v1/taproot-assets/assets/balance?asset_id=true&script_key_type.explicit_type=SCRIPT_KEY_BIP86")
         .to_request();
     let script_type_resp = test::call_service(&app, script_type_req).await;
     assert!(script_type_resp.status().is_success());
