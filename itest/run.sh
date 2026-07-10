@@ -21,7 +21,11 @@ export BITCOIND_HOST_PORT LND_HOST_PORT TAPD_HOST_PORT
 
 bc() { $COMPOSE exec -T bitcoind bitcoin-cli -regtest -rpcuser=polaruser -rpcpassword=polarpass "$@"; }
 
+MINER_PID=""
+FUNDER_PID=""
 cleanup() {
+  [ -n "$MINER_PID" ] && kill "$MINER_PID" 2>/dev/null || true
+  [ -n "$FUNDER_PID" ] && kill "$FUNDER_PID" 2>/dev/null || true
   $COMPOSE logs --no-color >"$ITEST_DIR/compose.log" 2>&1 || true
   $COMPOSE down -v --remove-orphans || true
 }
@@ -35,7 +39,9 @@ echo "==> Loading a wallet and mining an initial block"
 # a current timestamp flips it to synced, which is what unblocks tapd.
 bc createwallet itest >/dev/null 2>&1 || bc loadwallet itest >/dev/null 2>&1 || true
 ADDR="$(bc getnewaddress)"
-bc generatetoaddress 6 "$ADDR" >/dev/null
+# 110 blocks so the coinbase from the first block is mature (>100 confs) and
+# there are ample spendable outputs to fund lnd from.
+bc generatetoaddress 110 "$ADDR" >/dev/null
 
 echo "==> Starting tapd"
 $COMPOSE up -d --wait --wait-timeout 300 tapd
@@ -70,6 +76,29 @@ BITCOIN_RPC_URL=http://127.0.0.1:${BITCOIND_HOST_PORT}
 BITCOIN_RPC_USER=polaruser
 BITCOIN_RPC_PASS=polarpass
 ENV
+
+LND_MAC_HEX="$(xxd -p -c 100000 "$ARTIFACTS/lnd.macaroon")"
+
+# Keep lnd supplied with fresh, unlocked on-chain UTXOs. Asset sends anchor with
+# lnd's wallet, and the psbt tests lease UTXOs, so a single large funding output
+# gets locked and lnd's spendable balance drops to zero mid-suite. Trickling in
+# separate outputs keeps some unlocked.
+fund_lnd() {
+  local a
+  a="$(curl -sk -H "Grpc-Metadata-macaroon: $LND_MAC_HEX" \
+        "https://127.0.0.1:${LND_HOST_PORT}/v1/newaddress" \
+        | python3 -c 'import sys,json;print(json.load(sys.stdin).get("address",""))' 2>/dev/null)"
+  [ -n "$a" ] && bc sendtoaddress "$a" 5 >/dev/null 2>&1 || true
+}
+# Seed several outputs before the suite starts.
+for _ in $(seq 1 5); do fund_lnd; done
+
+# Mine a block periodically so mints, sends and fresh funding confirm during the
+# run, and keep topping lnd up so it never runs out of spendable coins.
+( while true; do bc generatetoaddress 1 "$ADDR" >/dev/null 2>&1 || true; sleep 5; done ) &
+MINER_PID=$!
+( while true; do fund_lnd; sleep 20; done ) &
+FUNDER_PID=$!
 
 echo "==> Running integration suite"
 cd ..

@@ -4,7 +4,7 @@ use serial_test::serial;
 use std::time::Duration;
 use taproot_assets_rest_gateway::api::routes::configure;
 use taproot_assets_rest_gateway::tests::setup::{
-    assert_status_matches_body, setup, setup_without_assets,
+    assert_status_matches_body, setup, setup_without_assets, txid_to_internal_hex,
 };
 use tokio::time::{sleep, timeout};
 use tracing::info;
@@ -185,7 +185,8 @@ async fn test_transaction_status_polling() {
                     loop {
                         let req = test::TestRequest::get()
                             .uri(&format!(
-                                "/v1/taproot-assets/assets/transfers?anchor_txid={anchor_tx}"
+                                "/v1/taproot-assets/assets/transfers?anchor_txid={}",
+                                txid_to_internal_hex(anchor_tx)
                             ))
                             .to_request();
                         let resp = test::call_service(&app, req).await;
