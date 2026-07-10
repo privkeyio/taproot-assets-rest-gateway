@@ -278,11 +278,10 @@ async fn test_burn_with_incorrect_confirmation() {
         .to_request();
     let resp = test::call_service(&app, req).await;
 
-    // API returns 200 OK with error in response body
-    assert!(resp.status().is_success());
+    let status = resp.status();
     let json: Value = test::read_body_json(resp).await;
-
-    // Verify it's an error response
+    assert_status_matches_body(status, &json);
+    assert!(!status.is_success());
     assert_eq!(json["code"].as_i64(), Some(2));
     assert!(json["message"]
         .as_str()
@@ -454,9 +453,10 @@ async fn test_burn_edge_cases() {
         .to_request();
     let resp = test::call_service(&app, req).await;
 
-    // API returns 200 OK with error in response body
-    assert!(resp.status().is_success());
+    let status = resp.status();
     let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(status, &json);
+    assert!(!status.is_success());
     assert_eq!(json["code"].as_i64(), Some(2));
     assert!(json["message"]
         .as_str()
@@ -627,9 +627,11 @@ async fn test_burn_validation_messages() {
             .set_json(&request)
             .to_request();
         let resp = test::call_service(&app, req).await;
-        assert!(resp.status().is_success());
+        let status = resp.status();
 
         let json: Value = test::read_body_json(resp).await;
+        assert_status_matches_body(status, &json);
+        assert!(!status.is_success());
         assert!(json["code"].is_number());
         assert!(
             json["message"].as_str().unwrap().contains(expected_message),
