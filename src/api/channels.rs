@@ -1,4 +1,4 @@
-use super::handle_result;
+use super::{handle_result, parse_upstream};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
 use crate::websocket::proxy_handler::WebSocketProxyHandler;
@@ -88,10 +88,7 @@ pub async fn encode_custom_data(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -110,10 +107,7 @@ pub async fn fund_channel(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -132,10 +126,7 @@ pub async fn create_invoice(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -154,10 +145,7 @@ pub async fn decode_invoice(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -176,10 +164,7 @@ pub async fn send_payment(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(req, stream, ws_proxy_handler))]

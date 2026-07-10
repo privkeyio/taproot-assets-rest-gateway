@@ -4,13 +4,17 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use std::time::Duration;
 use taproot_assets_rest_gateway::api::routes::configure;
-use taproot_assets_rest_gateway::tests::setup::setup_without_assets;
+use taproot_assets_rest_gateway::tests::setup::{assert_status_matches_body, setup_without_assets};
 use taproot_assets_rest_gateway::types::{BaseUrl, MacaroonHex};
 use taproot_assets_rest_gateway::websocket::{
     connection_manager::WebSocketConnectionManager, proxy_handler::WebSocketProxyHandler,
 };
 use tokio::time::timeout;
 use tracing::info;
+
+/// Compressed secp256k1 generator point; a valid public key for shape testing.
+const SECP256K1_GENERATOR: &str =
+    "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
 
 #[actix_rt::test]
 async fn test_get_mailbox_info() {
@@ -28,8 +32,9 @@ async fn test_get_mailbox_info() {
         .uri("/v1/taproot-assets/mailbox/info")
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
     let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(resp_status, &json);
     if json.get("error").is_some() || json.get("code").is_some() {
         info!("Mailbox info returned error: {:?}", json);
         return;
@@ -63,8 +68,9 @@ async fn test_send_message_basic() {
         .set_json(&request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
     let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(resp_status, &json);
     if json.get("error").is_some() || json.get("code").is_some() {
         info!("Send message returned error: {:?}", json);
     } else {
@@ -124,6 +130,42 @@ async fn test_receive_messages_flow() {
 }
 
 #[actix_rt::test]
+async fn test_remove_message() {
+    let (client, base_url, macaroon_hex) = setup_without_assets().await;
+    let app = test::init_service(
+        App::new()
+            .app_data(client.clone())
+            .app_data(base_url.clone())
+            .app_data(macaroon_hex.clone())
+            .configure(configure),
+    )
+    .await;
+    info!("Testing mailbox message remove");
+    // tapd encodes protobuf `bytes` fields as hex, not base64. The signature is
+    // intentionally invalid; what this asserts is that the request shape reaches
+    // tapd's signature check rather than being rejected as malformed JSON.
+    let request = json!({
+        "receiver_id": SECP256K1_GENERATOR,
+        "message_ids": [1],
+        "signature": "00".repeat(64)
+    });
+    let req = test::TestRequest::post()
+        .uri("/v1/taproot-assets/mailbox/remove")
+        .set_json(&request)
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    let resp_status = resp.status();
+    let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(resp_status, &json);
+
+    let message = json["message"].as_str().unwrap_or_default();
+    assert!(
+        !message.contains("invalid value for bytes type"),
+        "tapd rejected the request encoding: {json}"
+    );
+}
+
+#[actix_rt::test]
 async fn test_mailbox_expiry_handling() {
     let (client, base_url, macaroon_hex) = setup_without_assets().await;
     let app = test::init_service(
@@ -145,7 +187,9 @@ async fn test_mailbox_expiry_handling() {
         .set_json(&expired_request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let status = resp.status();
+    let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(status, &json);
 }
 
 #[actix_rt::test]
@@ -172,7 +216,9 @@ async fn test_large_message_payload() {
         .set_json(&request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let status = resp.status();
+    let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(status, &json);
 }
 
 #[actix_rt::test]

@@ -29,6 +29,8 @@ pub enum AppError {
     WebSocketProxyError(String),
     #[error("Database error: {0}")]
     DatabaseError(String),
+    #[error("Upstream returned {status}: {body}")]
+    UpstreamError { status: u16, body: String },
 }
 
 impl ResponseError for AppError {
@@ -37,6 +39,14 @@ impl ResponseError for AppError {
     }
 
     fn error_response(&self) -> HttpResponse {
+        // Upstream errors relay tapd's document verbatim, matching handle_result.
+        if let AppError::UpstreamError { status, body } = self {
+            let status = StatusCode::from_u16(*status).unwrap_or(StatusCode::BAD_GATEWAY);
+            return match serde_json::from_str::<serde_json::Value>(body) {
+                Ok(json) => HttpResponse::build(status).json(json),
+                Err(_) => HttpResponse::build(status).json(serde_json::json!({ "error": body })),
+            };
+        }
         let (message, error_type) = match self {
             AppError::ValidationError(msg) => (msg.clone(), "validation_error"),
             AppError::InvalidInput(msg) => (msg.clone(), "invalid_input"),
@@ -72,6 +82,9 @@ impl ResponseError for AppError {
             AppError::DatabaseError(_) => {
                 ("Database operation failed".to_string(), "database_error")
             }
+            AppError::UpstreamError { .. } => {
+                ("Upstream request failed".to_string(), "upstream_error")
+            }
         };
 
         HttpResponse::build(self.status_code()).json(serde_json::json!({
@@ -90,6 +103,9 @@ impl AppError {
             AppError::WebSocketError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::WebSocketProxyError(_) => StatusCode::BAD_GATEWAY,
             AppError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::UpstreamError { status, .. } => {
+                StatusCode::from_u16(*status).unwrap_or(StatusCode::BAD_GATEWAY)
+            }
             AppError::RequestError(e) => {
                 if e.is_timeout() {
                     StatusCode::GATEWAY_TIMEOUT
@@ -101,5 +117,37 @@ impl AppError {
             }
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_upstream_error_preserves_status() {
+        let err = AppError::UpstreamError {
+            status: 404,
+            body: "not found".to_string(),
+        };
+        assert_eq!(err.status_code(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_upstream_error_falls_back_on_invalid_status() {
+        let err = AppError::UpstreamError {
+            status: 0,
+            body: String::new(),
+        };
+        assert_eq!(err.status_code(), StatusCode::BAD_GATEWAY);
+    }
+
+    #[test]
+    fn test_upstream_error_message_includes_body() {
+        let err = AppError::UpstreamError {
+            status: 400,
+            body: "invalid confirmation text".to_string(),
+        };
+        assert!(err.to_string().contains("invalid confirmation text"));
     }
 }

@@ -73,11 +73,29 @@ async fn main() -> std::io::Result<()> {
     let ws_proxy_handler = Arc::new(WebSocketProxyHandler::new(connection_manager));
 
     let api_key = std::env::var("API_KEY").ok();
-    if api_key.is_some() {
-        println!("🔑 API key authentication: enabled");
-    } else {
-        tracing::warn!("API_KEY not set - API key authentication is disabled");
-        println!("🔑 API key authentication: DISABLED ⚠️");
+    let allow_insecure = std::env::var("ALLOW_INSECURE_NO_AUTH")
+        .map(|v| v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    match (&api_key, allow_insecure) {
+        (Some(_), _) => println!("🔑 API key authentication: enabled"),
+        (None, true) => {
+            tracing::warn!(
+                "API_KEY not set and ALLOW_INSECURE_NO_AUTH=true - every route, including \
+                 wallet backup export and asset burns, is unauthenticated"
+            );
+            println!("🔑 API key authentication: DISABLED ⚠️");
+        }
+        (None, false) => {
+            tracing::error!(
+                "API_KEY not set. The gateway proxies destructive and secret-exposing tapd \
+                 endpoints, so it refuses to start without authentication. Set API_KEY, or set \
+                 ALLOW_INSECURE_NO_AUTH=true to override in development."
+            );
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "API_KEY not set",
+            ));
+        }
     }
 
     if !config.tls_verify {

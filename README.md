@@ -10,6 +10,19 @@ with Polar. It is NOT recommended for mainnet use. Use at your own risk!
 This is community-developed software that interfaces with Lightning Labs' 
 Taproot Assets daemon. It is not affiliated with or endorsed by Lightning Labs.
 
+## Requirements
+
+| Component | Minimum version |
+| --- | --- |
+| `tapd` | **0.8.0** |
+| `lnd` | 0.19.0 (required by tapd 0.8) |
+
+`tapd` 0.8.0 or newer is required. The gateway sends `asset_specifier` on
+`/v1/taproot-assets/burn` and exposes the wallet backup, mailbox remove, and
+RFQ portfolio pilot endpoints, none of which exist on `tapd` 0.7.x. Because
+`tapd` rejects unknown request fields, burning assets against 0.7.x fails with
+`unknown field "asset_specifier"`. Run gateway `v0.2.x` if you need `tapd` 0.7.x.
+
 ## The Problem
 
 Lightning Labs' `tapd` REST API (port 8089) doesn't support CORS, making it impossible to use directly from web browsers. Additionally, managing macaroons and TLS certificates adds complexity for developers who just want to integrate Taproot Assets into their applications.

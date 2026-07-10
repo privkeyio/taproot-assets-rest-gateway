@@ -2,7 +2,9 @@ use actix_web::{test, App};
 use serde_json::{json, Value};
 use serial_test::serial;
 use taproot_assets_rest_gateway::api::routes::configure;
-use taproot_assets_rest_gateway::tests::setup::{setup, setup_without_assets};
+use taproot_assets_rest_gateway::tests::setup::{
+    assert_status_matches_body, setup, setup_without_assets,
+};
 use tokio::time::{sleep, Duration};
 
 #[actix_rt::test]
@@ -80,8 +82,9 @@ async fn test_insufficient_balance_error() {
                 .to_request(),
         )
         .await;
-        assert!(send_resp.status().is_success());
+        let send_resp_status = send_resp.status();
         let send_json: Value = test::read_body_json(send_resp).await;
+        assert_status_matches_body(send_resp_status, &send_json);
         assert!(send_json.get("error").is_some() || send_json.get("code").is_some());
     }
 }

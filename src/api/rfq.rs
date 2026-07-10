@@ -1,4 +1,4 @@
-use super::handle_result;
+use super::{handle_result, parse_upstream};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
 use actix_web::{web, HttpRequest, HttpResponse, Result as ActixResult};
@@ -56,10 +56,7 @@ pub async fn buy_offer(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -79,10 +76,7 @@ pub async fn buy_order(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -100,30 +94,7 @@ pub async fn get_notifications(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
-}
-
-#[instrument(skip(client, macaroon_hex))]
-pub async fn get_asset_rates(
-    client: &Client,
-    base_url: &str,
-    macaroon_hex: &str,
-) -> Result<Value, AppError> {
-    info!("Fetching asset rates");
-    let url = format!("{base_url}/v1/taproot-assets/rfq/priceoracle/assetrates");
-    let response = client
-        .get(&url)
-        .header("Grpc-Metadata-macaroon", macaroon_hex)
-        .send()
-        .await
-        .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -140,10 +111,7 @@ pub async fn get_peer_quotes(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -163,10 +131,7 @@ pub async fn sell_offer(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -186,10 +151,7 @@ pub async fn sell_order(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 async fn buy_offer_handler(
@@ -391,21 +353,6 @@ async fn poll_rfq_events(
     }
 }
 
-async fn asset_rates_handler(
-    client: web::Data<Client>,
-    base_url: web::Data<BaseUrl>,
-    macaroon_hex: web::Data<MacaroonHex>,
-) -> HttpResponse {
-    handle_result(
-        get_asset_rates(
-            client.as_ref(),
-            base_url.0.as_str(),
-            macaroon_hex.0.as_str(),
-        )
-        .await,
-    )
-}
-
 async fn peer_quotes_handler(
     client: web::Data<Client>,
     base_url: web::Data<BaseUrl>,
@@ -473,7 +420,6 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route(web::get().to(rfq_events_ws_handler))
             .route(web::post().to(notifications_handler)),
     )
-    .service(web::resource("/rfq/priceoracle/assetrates").route(web::get().to(asset_rates_handler)))
     .service(web::resource("/rfq/quotes/peeraccepted").route(web::get().to(peer_quotes_handler)))
     .service(
         web::resource("/rfq/selloffer/asset-id/{asset_id}")

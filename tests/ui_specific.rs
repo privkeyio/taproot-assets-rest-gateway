@@ -3,7 +3,9 @@ use serde_json::{json, Value};
 use serial_test::serial;
 use std::time::Duration;
 use taproot_assets_rest_gateway::api::routes::configure;
-use taproot_assets_rest_gateway::tests::setup::{setup, setup_without_assets};
+use taproot_assets_rest_gateway::tests::setup::{
+    assert_status_matches_body, setup, setup_without_assets,
+};
 use tokio::time::{sleep, timeout};
 use tracing::info;
 
@@ -473,9 +475,10 @@ async fn test_confirmation_dialog_data() {
         .set_json(&burn_req)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(resp_status, &json);
     if json.get("error").is_none() && json.get("code").is_none() {
         assert!(json["burn_transfer"].is_object() || json["transfer"].is_object());
         info!("Burn confirmation dialog should show transfer details");

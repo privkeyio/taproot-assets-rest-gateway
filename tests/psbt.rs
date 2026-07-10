@@ -7,7 +7,9 @@ use taproot_assets_rest_gateway::api::wallet::{
     VirtualPsbtAnchorRequest, VirtualPsbtCommitRequest, VirtualPsbtFundRequest,
     VirtualPsbtLogTransferRequest, VirtualPsbtSignRequest,
 };
-use taproot_assets_rest_gateway::tests::setup::{mint_test_asset, setup};
+use taproot_assets_rest_gateway::tests::setup::{
+    assert_status_matches_body, mint_test_asset, setup,
+};
 
 #[actix_rt::test]
 #[serial]
@@ -61,9 +63,10 @@ async fn test_create_and_fund_virtual_psbt() {
         .set_json(&request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(resp_status, &json);
 
     if json.get("error").is_some() || json.get("code").is_some() {
         println!("Fund virtual PSBT error: {json:?}");
@@ -143,9 +146,10 @@ async fn test_sign_virtual_psbt() {
             .set_json(&sign_request)
             .to_request();
         let resp = test::call_service(&app, req).await;
-        assert!(resp.status().is_success());
+        let resp_status = resp.status();
 
         let json: Value = test::read_body_json(resp).await;
+        assert_status_matches_body(resp_status, &json);
 
         if json.get("error").is_some() || json.get("code").is_some() {
             println!("Sign virtual PSBT error: {json:?}");
@@ -241,9 +245,10 @@ async fn test_anchor_virtual_psbt() {
                 .set_json(&anchor_request)
                 .to_request();
             let resp = test::call_service(&app, req).await;
-            assert!(resp.status().is_success());
+            let resp_status = resp.status();
 
             let json: Value = test::read_body_json(resp).await;
+            assert_status_matches_body(resp_status, &json);
 
             if json.get("error").is_some() || json.get("code").is_some() {
                 println!("Anchor virtual PSBT error: {json:?}");
@@ -361,9 +366,10 @@ async fn test_commit_virtual_psbt() {
                 .set_json(&commit_request)
                 .to_request();
             let resp = test::call_service(&app, req).await;
-            assert!(resp.status().is_success());
+            let resp_status = resp.status();
 
             let json: Value = test::read_body_json(resp).await;
+            assert_status_matches_body(resp_status, &json);
 
             if json.get("error").is_some() || json.get("code").is_some() {
                 println!("Commit virtual PSBT error: {json:?}");
@@ -414,9 +420,10 @@ async fn test_log_psbt_transfer() {
         .set_json(&request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(resp_status, &json);
 
     if json.get("error").is_some() || json.get("code").is_some() {
         println!("Log transfer error: {json:?}");
@@ -482,9 +489,10 @@ async fn test_psbt_coin_selection_types() {
             .set_json(&request)
             .to_request();
         let resp = test::call_service(&app, req).await;
-        assert!(resp.status().is_success());
+        let resp_status = resp.status();
 
         let json: Value = test::read_body_json(resp).await;
+        assert_status_matches_body(resp_status, &json);
         println!(
             "Coin select type {} result: {}",
             coin_type,
@@ -577,9 +585,10 @@ async fn test_psbt_with_specific_inputs() {
                             .set_json(&request)
                             .to_request();
                         let resp = test::call_service(&app, req).await;
-                        assert!(resp.status().is_success());
+                        let resp_status = resp.status();
 
                         let json: Value = test::read_body_json(resp).await;
+                        assert_status_matches_body(resp_status, &json);
                         println!(
                             "Fund with specific input result: {}",
                             if json.get("error").is_some() {
@@ -617,9 +626,10 @@ async fn test_psbt_error_handling() {
         .set_json(&sign_request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(resp_status, &json);
     assert!(json.get("error").is_some() || json.get("code").is_some());
 }
 
@@ -654,9 +664,10 @@ async fn test_commit_psbt_with_custom_parameters() {
         .set_json(&commit_request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(resp_status, &json);
     println!(
         "Commit with custom params result: {}",
         if json.get("error").is_some() {
@@ -694,9 +705,10 @@ async fn test_anchor_multiple_virtual_psbts() {
         .set_json(&anchor_request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(resp_status, &json);
     println!(
         "Anchor multiple PSBTs result: {}",
         if json.get("error").is_some() {
@@ -746,9 +758,10 @@ async fn test_log_transfer_with_label() {
             .set_json(&request)
             .to_request();
         let resp = test::call_service(&app, req).await;
-        assert!(resp.status().is_success());
+        let resp_status = resp.status();
 
         let json: Value = test::read_body_json(resp).await;
+        assert_status_matches_body(resp_status, &json);
         println!(
             "Log transfer with label {:?} result: {}",
             label,

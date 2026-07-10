@@ -1,4 +1,4 @@
-use super::{handle_result, validate_asset_id, validate_group_key};
+use super::{handle_result, parse_upstream, validate_asset_id, validate_group_key};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
 use actix_web::{web, HttpResponse};
@@ -59,10 +59,7 @@ pub async fn burn_assets(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -79,10 +76,7 @@ pub async fn list_burns(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 async fn burn(
@@ -113,4 +107,40 @@ async fn list(
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(web::resource("/burn").route(web::post().to(burn)))
         .service(web::resource("/burns").route(web::get().to(list)));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn specifier(asset_id: Option<&str>, group_key: Option<&str>) -> AssetSpecifier {
+        AssetSpecifier {
+            asset_id_str: asset_id.map(str::to_string),
+            group_key_str: group_key.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn test_rejects_empty_specifier() {
+        assert!(specifier(None, None).validate().is_err());
+    }
+
+    #[test]
+    fn test_rejects_both_fields_set() {
+        assert!(specifier(Some(&"a".repeat(64)), Some(&"a".repeat(66)))
+            .validate()
+            .is_err());
+    }
+
+    #[test]
+    fn test_accepts_exactly_one_valid_field() {
+        assert!(specifier(Some(&"a".repeat(64)), None).validate().is_ok());
+        assert!(specifier(None, Some(&"a".repeat(66))).validate().is_ok());
+    }
+
+    #[test]
+    fn test_rejects_malformed_asset_id() {
+        assert!(specifier(Some("deadbeef"), None).validate().is_err());
+        assert!(specifier(Some(&"z".repeat(64)), None).validate().is_err());
+    }
 }

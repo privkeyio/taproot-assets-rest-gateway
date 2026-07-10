@@ -1,5 +1,5 @@
-use super::handle_result;
 use super::mailbox_auth::{generate_challenge, validate_authentication};
+use super::{handle_result, parse_upstream};
 use crate::database::SharedDatabase;
 use crate::error::AppError;
 use crate::monitoring::SharedMonitoring;
@@ -27,6 +27,13 @@ pub struct SendRequest {
     pub encrypted_payload: String,
     pub tx_proof: Option<serde_json::Value>,
     pub expiry_block_height: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RemoveMessageRequest {
+    pub receiver_id: String,
+    pub message_ids: Vec<u64>,
+    pub signature: String,
 }
 
 #[derive(Debug, Clone)]
@@ -81,10 +88,7 @@ pub async fn get_mailbox_info(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -103,10 +107,7 @@ pub async fn receive_mail(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -125,10 +126,26 @@ pub async fn send_mail(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<serde_json::Value>()
+    parse_upstream::<serde_json::Value>(response).await
+}
+
+#[instrument(skip(client, macaroon_hex, request))]
+pub async fn remove_message(
+    client: &Client,
+    base_url: &str,
+    macaroon_hex: &str,
+    request: RemoveMessageRequest,
+) -> Result<serde_json::Value, AppError> {
+    info!("Removing mailbox message");
+    let url = format!("{base_url}/v1/taproot-assets/mailbox/remove");
+    let response = client
+        .post(&url)
+        .header("Grpc-Metadata-macaroon", macaroon_hex)
+        .json(&request)
+        .send()
         .await
-        .map_err(AppError::RequestError)
+        .map_err(AppError::RequestError)?;
+    parse_upstream::<serde_json::Value>(response).await
 }
 
 async fn info(
@@ -155,6 +172,15 @@ async fn send(
     req: web::Json<SendRequest>,
 ) -> HttpResponse {
     handle_result(send_mail(&client, &base_url.0, &macaroon_hex.0, req.into_inner()).await)
+}
+
+async fn remove(
+    client: web::Data<Client>,
+    base_url: web::Data<BaseUrl>,
+    macaroon_hex: web::Data<MacaroonHex>,
+    req: web::Json<RemoveMessageRequest>,
+) -> HttpResponse {
+    handle_result(remove_message(&client, &base_url.0, &macaroon_hex.0, req.into_inner()).await)
 }
 
 async fn receive_websocket(
@@ -737,6 +763,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(web::resource("/mailbox/info").route(web::get().to(info)))
         .service(web::resource("/mailbox/receive").route(web::post().to(receive)))
         .service(web::resource("/mailbox/receive").route(web::get().to(receive_websocket)))
+        .service(web::resource("/mailbox/remove").route(web::post().to(remove)))
         .service(web::resource("/mailbox/send").route(web::post().to(send)));
 }
 

@@ -1,4 +1,4 @@
-use super::handle_result;
+use super::{handle_result, parse_upstream};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
 use actix_web::{web, HttpResponse};
@@ -20,10 +20,7 @@ pub async fn get_info(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 async fn get_info_handler(

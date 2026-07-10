@@ -5,7 +5,9 @@ use taproot_assets_rest_gateway::api::rfq::{
     BuyOfferRequest, BuyOrderRequest, SellOfferRequest, SellOrderRequest,
 };
 use taproot_assets_rest_gateway::api::routes::configure;
-use taproot_assets_rest_gateway::tests::setup::{mint_test_asset, setup, setup_without_assets};
+use taproot_assets_rest_gateway::tests::setup::{
+    assert_status_matches_body, mint_test_asset, setup, setup_without_assets,
+};
 use tracing::info;
 
 #[actix_rt::test]
@@ -44,9 +46,10 @@ async fn test_create_buy_offer() {
         .set_json(&request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(resp_status, &json);
     info!("Buy offer response: {:?}", json);
 
     // Should return empty response on success
@@ -89,9 +92,10 @@ async fn test_create_sell_offer() {
         .set_json(&request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(resp_status, &json);
     info!("Sell offer response: {:?}", json);
 
     // Should return empty response on success
@@ -140,9 +144,10 @@ async fn test_submit_buy_order() {
         .set_json(&request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(resp_status, &json);
     info!("Buy order response: {:?}", json);
 
     // Check if it's an error response first
@@ -216,9 +221,10 @@ async fn test_submit_sell_order() {
         .set_json(&request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(resp_status, &json);
     info!("Sell order response: {:?}", json);
 
     // Check if it's an error response first
@@ -263,9 +269,10 @@ async fn test_get_peer_accepted_quotes() {
         .uri("/v1/taproot-assets/rfq/quotes/peeraccepted")
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(resp_status, &json);
     info!("Peer accepted quotes response: {:?}", json);
 
     assert!(json["buy_quotes"].is_array());
@@ -293,43 +300,6 @@ async fn test_get_peer_accepted_quotes() {
         assert!(quote["bid_asset_rate"].is_object());
         assert!(quote["expiry"].is_string());
         assert!(quote["min_transportable_msat"].is_string());
-    }
-}
-
-#[actix_rt::test]
-async fn test_get_asset_rates() {
-    let (client, base_url, macaroon_hex) = setup_without_assets().await;
-    let app = test::init_service(
-        App::new()
-            .app_data(client.clone())
-            .app_data(base_url.clone())
-            .app_data(macaroon_hex.clone())
-            .configure(configure),
-    )
-    .await;
-
-    info!("Testing get asset rates");
-
-    // Test with BTC as payment asset (asset ID all zeros)
-    let req = test::TestRequest::get()
-        .uri("/v1/taproot-assets/rfq/priceoracle/assetrates?transaction_type=PURCHASE&subject_asset.asset_id_str=0000000000000000000000000000000000000000000000000000000000000001&subject_asset_max_amount=1000&payment_asset.asset_id_str=0000000000000000000000000000000000000000000000000000000000000000")
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
-
-    let json: Value = test::read_body_json(resp).await;
-    info!("Asset rates response: {:?}", json);
-
-    // Response contains either ok or error
-    if let Some(ok_resp) = json.get("ok") {
-        assert!(ok_resp["asset_rates"].is_object());
-        let rates = &ok_resp["asset_rates"];
-        assert!(rates["subjectAssetRate"].is_object());
-        assert!(rates["paymentAssetRate"].is_object());
-        assert!(rates["expiry_timestamp"].is_string());
-    } else if let Some(error_resp) = json.get("error") {
-        assert!(error_resp["message"].is_string());
-        assert!(error_resp["code"].is_number());
     }
 }
 
@@ -413,30 +383,9 @@ async fn test_buy_offer_with_group_key() {
         .set_json(&request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
-}
-
-#[actix_rt::test]
-async fn test_asset_rates_with_hint() {
-    let (client, base_url, macaroon_hex) = setup_without_assets().await;
-    let app = test::init_service(
-        App::new()
-            .app_data(client.clone())
-            .app_data(base_url.clone())
-            .app_data(macaroon_hex.clone())
-            .configure(configure),
-    )
-    .await;
-
-    // Test with asset rates hint
-    let req = test::TestRequest::get()
-        .uri("/v1/taproot-assets/rfq/priceoracle/assetrates?transaction_type=SALE&subject_asset.asset_id_str=0000000000000000000000000000000000000000000000000000000000000001&subject_asset_max_amount=500&payment_asset.asset_id_str=0000000000000000000000000000000000000000000000000000000000000000&asset_rates_hint.subjectAssetRate.coefficient=1000000&asset_rates_hint.subjectAssetRate.scale=8&asset_rates_hint.paymentAssetRate.coefficient=100000000&asset_rates_hint.paymentAssetRate.scale=8&asset_rates_hint.expiry_timestamp=1800000000")
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
-
+    let status = resp.status();
     let json: Value = test::read_body_json(resp).await;
-    info!("Asset rates with hint response: {:?}", json);
+    assert_status_matches_body(status, &json);
 }
 
 #[actix_rt::test]
@@ -479,9 +428,10 @@ async fn test_buy_order_timeout_scenarios() {
         .set_json(&request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(resp_status, &json);
     // Likely to be rejected or timeout
     info!("Buy order with short timeout response: {:?}", json);
 }
@@ -551,9 +501,10 @@ async fn test_fixed_point_rate_conversion() {
         .uri("/v1/taproot-assets/rfq/quotes/peeraccepted")
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(resp_status, &json);
 
     // Check rate structure in any existing quotes
     let buy_quotes = json["buy_quotes"].as_array().unwrap();
@@ -606,7 +557,9 @@ async fn test_create_multiple_offers() {
             .set_json(&buy_request)
             .to_request();
         let buy_resp = test::call_service(&app, buy_req).await;
-        assert!(buy_resp.status().is_success());
+        let buy_status = buy_resp.status();
+        let buy_json: Value = test::read_body_json(buy_resp).await;
+        assert_status_matches_body(buy_status, &buy_json);
 
         // Sell offer
         let sell_request = SellOfferRequest {
@@ -623,7 +576,9 @@ async fn test_create_multiple_offers() {
             .set_json(&sell_request)
             .to_request();
         let sell_resp = test::call_service(&app, sell_req).await;
-        assert!(sell_resp.status().is_success());
+        let sell_status = sell_resp.status();
+        let sell_json: Value = test::read_body_json(sell_resp).await;
+        assert_status_matches_body(sell_status, &sell_json);
     }
 
     info!("Successfully created multiple buy and sell offers");
@@ -646,9 +601,10 @@ async fn test_quote_expiry_validation() {
         .uri("/v1/taproot-assets/rfq/quotes/peeraccepted")
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(resp_status, &json);
     let current_time = chrono::Utc::now().timestamp() as u64;
 
     // Check buy quotes expiry
@@ -703,9 +659,10 @@ async fn test_min_transportable_units() {
         .uri("/v1/taproot-assets/rfq/quotes/peeraccepted")
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let resp_status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(resp_status, &json);
 
     // Check buy quotes min transportable units
     let buy_quotes = json["buy_quotes"].as_array().unwrap();

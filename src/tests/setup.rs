@@ -747,3 +747,15 @@ pub async fn mint_test_asset(
 
     panic!("No assets available after waiting. Run the test setup script or ensure tapd is properly configured.");
 }
+
+/// A response must never claim success while carrying an error document, nor
+/// claim failure while carrying a result. tapd reports errors as `code` +
+/// `message`; gateway-side failures use `error`.
+pub fn assert_status_matches_body(status: actix_web::http::StatusCode, body: &Value) {
+    let is_error_body = body.get("code").is_some() || body.get("error").is_some();
+    assert_eq!(
+        status.is_success(),
+        !is_error_body,
+        "status {status} disagrees with body {body}"
+    );
+}

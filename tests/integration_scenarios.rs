@@ -5,7 +5,9 @@ use taproot_assets_rest_gateway::api::addresses::NewAddrRequest;
 use taproot_assets_rest_gateway::api::burn::{AssetSpecifier, BurnRequest};
 use taproot_assets_rest_gateway::api::routes::configure;
 use taproot_assets_rest_gateway::api::send::SendRequest;
-use taproot_assets_rest_gateway::tests::setup::{mint_test_asset, setup};
+use taproot_assets_rest_gateway::tests::setup::{
+    assert_status_matches_body, mint_test_asset, setup,
+};
 
 #[actix_rt::test]
 #[serial]
@@ -103,9 +105,10 @@ async fn test_complete_asset_lifecycle() {
             .to_request(),
     )
     .await;
-    assert!(burn_resp.status().is_success());
+    let burn_resp_status = burn_resp.status();
 
     let burn_json: Value = test::read_body_json(burn_resp).await;
+    assert_status_matches_body(burn_resp_status, &burn_json);
 
     // Check if burn was successful or returned an error
     if burn_json.get("error").is_some() || burn_json.get("code").is_some() {

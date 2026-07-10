@@ -1,4 +1,4 @@
-use super::{handle_result, validate_hex_param};
+use super::{handle_result, parse_upstream, validate_hex_param};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
 use actix_web::{web, HttpResponse};
@@ -78,6 +78,27 @@ pub struct VirtualPsbtSignRequest {
     pub funded_psbt: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum BackupMode {
+    Raw,
+    Compact,
+    Optimistic,
+}
+
+/// When `mode` is omitted the field is not forwarded, so tapd applies its
+/// protobuf zero value of `RAW`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExportBackupRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<BackupMode>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ImportBackupRequest {
+    pub backup: String,
+}
+
 #[instrument(skip(client, macaroon_hex, request))]
 pub async fn next_internal_key(
     client: &Client,
@@ -97,10 +118,7 @@ pub async fn next_internal_key(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -118,10 +136,7 @@ pub async fn get_internal_key(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -140,10 +155,7 @@ pub async fn prove_ownership(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -162,10 +174,7 @@ pub async fn verify_ownership(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -184,10 +193,7 @@ pub async fn declare_script_key(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -209,10 +215,7 @@ pub async fn next_script_key(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex))]
@@ -230,10 +233,7 @@ pub async fn get_script_key(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -252,10 +252,7 @@ pub async fn delete_utxo_lease(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -274,10 +271,7 @@ pub async fn anchor_virtual_psbt(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -296,10 +290,7 @@ pub async fn commit_virtual_psbt(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -318,10 +309,7 @@ pub async fn fund_virtual_psbt(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -340,10 +328,7 @@ pub async fn log_virtual_psbt_transfer(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
-        .await
-        .map_err(AppError::RequestError)
+    parse_upstream::<Value>(response).await
 }
 
 #[instrument(skip(client, macaroon_hex, request))]
@@ -362,10 +347,79 @@ pub async fn sign_virtual_psbt(
         .send()
         .await
         .map_err(AppError::RequestError)?;
-    response
-        .json::<Value>()
+    parse_upstream::<Value>(response).await
+}
+
+#[instrument(skip(client, macaroon_hex, request))]
+pub async fn export_wallet_backup(
+    client: &Client,
+    base_url: &str,
+    macaroon_hex: &str,
+    request: ExportBackupRequest,
+) -> Result<Value, AppError> {
+    info!("Exporting asset wallet backup");
+    let url = format!("{base_url}/v1/taproot-assets/wallet/backup/export");
+    let response = client
+        .post(&url)
+        .header("Grpc-Metadata-macaroon", macaroon_hex)
+        .json(&request)
+        .send()
         .await
-        .map_err(AppError::RequestError)
+        .map_err(AppError::RequestError)?;
+    parse_upstream::<Value>(response).await
+}
+
+#[instrument(skip(client, macaroon_hex, request))]
+pub async fn import_wallet_backup(
+    client: &Client,
+    base_url: &str,
+    macaroon_hex: &str,
+    request: ImportBackupRequest,
+) -> Result<Value, AppError> {
+    info!("Importing assets from backup");
+    let url = format!("{base_url}/v1/taproot-assets/wallet/backup/import");
+    let response = client
+        .post(&url)
+        .header("Grpc-Metadata-macaroon", macaroon_hex)
+        .json(&request)
+        .send()
+        .await
+        .map_err(AppError::RequestError)?;
+    parse_upstream::<Value>(response).await
+}
+
+async fn export_backup_handler(
+    client: web::Data<Client>,
+    base_url: web::Data<BaseUrl>,
+    macaroon_hex: web::Data<MacaroonHex>,
+    req: web::Json<ExportBackupRequest>,
+) -> HttpResponse {
+    handle_result(
+        export_wallet_backup(
+            client.as_ref(),
+            &base_url.0,
+            &macaroon_hex.0,
+            req.into_inner(),
+        )
+        .await,
+    )
+}
+
+async fn import_backup_handler(
+    client: web::Data<Client>,
+    base_url: web::Data<BaseUrl>,
+    macaroon_hex: web::Data<MacaroonHex>,
+    req: web::Json<ImportBackupRequest>,
+) -> HttpResponse {
+    handle_result(
+        import_wallet_backup(
+            client.as_ref(),
+            &base_url.0,
+            &macaroon_hex.0,
+            req.into_inner(),
+        )
+        .await,
+    )
 }
 
 async fn next_internal_key_handler(
@@ -593,6 +647,10 @@ async fn sign_virtual_psbt_handler(
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
+        web::resource("/wallet/backup/export").route(web::post().to(export_backup_handler)),
+    )
+    .service(web::resource("/wallet/backup/import").route(web::post().to(import_backup_handler)))
+    .service(
         web::resource("/wallet/internal-key/next").route(web::post().to(next_internal_key_handler)),
     )
     .service(
@@ -637,4 +695,34 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     .service(
         web::resource("/wallet/virtual-psbt/sign").route(web::post().to(sign_virtual_psbt_handler)),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_backup_mode_serializes_to_upstream_enum_names() {
+        assert_eq!(serde_json::to_value(BackupMode::Raw).unwrap(), "RAW");
+        assert_eq!(
+            serde_json::to_value(BackupMode::Compact).unwrap(),
+            "COMPACT"
+        );
+        assert_eq!(
+            serde_json::to_value(BackupMode::Optimistic).unwrap(),
+            "OPTIMISTIC"
+        );
+    }
+
+    #[test]
+    fn test_export_backup_omits_mode_when_unset() {
+        let body = serde_json::to_value(ExportBackupRequest { mode: None }).unwrap();
+        assert_eq!(body, serde_json::json!({}));
+    }
+
+    #[test]
+    fn test_export_backup_rejects_unknown_mode() {
+        let parsed: Result<ExportBackupRequest, _> = serde_json::from_str(r#"{"mode":"TURBO"}"#);
+        assert!(parsed.is_err());
+    }
 }
