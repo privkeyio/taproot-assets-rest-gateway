@@ -12,6 +12,10 @@ use taproot_assets_rest_gateway::websocket::{
 use tokio::time::timeout;
 use tracing::info;
 
+/// Compressed secp256k1 generator point; a valid public key for shape testing.
+const SECP256K1_GENERATOR: &str =
+    "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+
 #[actix_rt::test]
 async fn test_get_mailbox_info() {
     let (client, base_url, macaroon_hex) = setup_without_assets().await;
@@ -137,10 +141,13 @@ async fn test_remove_message() {
     )
     .await;
     info!("Testing mailbox message remove");
+    // tapd encodes protobuf `bytes` fields as hex, not base64. The signature is
+    // intentionally invalid; what this asserts is that the request shape reaches
+    // tapd's signature check rather than being rejected as malformed JSON.
     let request = json!({
-        "receiver_id": general_purpose::STANDARD.encode(vec![0x02; 33]),
+        "receiver_id": SECP256K1_GENERATOR,
         "message_ids": [1],
-        "signature": general_purpose::STANDARD.encode(vec![0u8; 64])
+        "signature": "00".repeat(64)
     });
     let req = test::TestRequest::post()
         .uri("/v1/taproot-assets/mailbox/remove")
@@ -150,11 +157,12 @@ async fn test_remove_message() {
     let resp_status = resp.status();
     let json: Value = test::read_body_json(resp).await;
     assert_status_matches_body(resp_status, &json);
-    if json.get("error").is_some() || json.get("code").is_some() {
-        info!("Remove message returned error: {:?}", json);
-    } else {
-        assert!(json.is_object());
-    }
+
+    let message = json["message"].as_str().unwrap_or_default();
+    assert!(
+        !message.contains("invalid value for bytes type"),
+        "tapd rejected the request encoding: {json}"
+    );
 }
 
 #[actix_rt::test]
@@ -179,7 +187,9 @@ async fn test_mailbox_expiry_handling() {
         .set_json(&expired_request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let status = resp.status();
+    let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(status, &json);
 }
 
 #[actix_rt::test]
@@ -206,7 +216,9 @@ async fn test_large_message_payload() {
         .set_json(&request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let status = resp.status();
+    let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(status, &json);
 }
 
 #[actix_rt::test]

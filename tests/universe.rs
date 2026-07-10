@@ -35,14 +35,9 @@ async fn test_add_federation_server() {
         .set_json(&request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-
-    // May fail if server is unreachable, but API structure should be correct
-    assert!(resp.status().is_success() || resp.status().is_client_error());
-
-    if resp.status().is_success() {
-        let json: Value = test::read_body_json(resp).await;
-        println!("Add federation response: {json:?}");
-    }
+    let status = resp.status();
+    let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(status, &json);
 }
 
 #[actix_rt::test]
@@ -164,13 +159,11 @@ async fn test_sync_with_universe() {
         .set_json(&request)
         .to_request();
     let resp = test::call_service(&app, req).await;
+    let status = resp.status();
+    let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(status, &json);
 
-    // May fail if no assets to sync, but API structure should be correct
-    assert!(resp.status().is_success() || resp.status().is_client_error());
-
-    if resp.status().is_success() {
-        let json: Value = test::read_body_json(resp).await;
-        // Response might have synced_universes or an error/empty response
+    if status.is_success() {
         if let Some(synced) = json.get("synced_universes") {
             assert!(synced.is_array() || synced.is_object());
         }
@@ -213,7 +206,9 @@ async fn test_sync_with_specific_assets() {
         .set_json(&request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success() || resp.status().is_client_error());
+    let status = resp.status();
+    let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(status, &json);
 }
 
 #[actix_rt::test]
@@ -273,9 +268,10 @@ async fn test_query_asset_roots() {
         ))
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let status = resp.status();
 
     let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(status, &json);
 
     // Should have issuance and transfer roots
     if json["issuance_root"].is_object() {
@@ -496,9 +492,9 @@ async fn test_delete_universe_root() {
         }))
         .to_request();
     let resp = test::call_service(&app, req).await;
-
-    // Expect this to fail as the asset doesn't exist
-    assert!(resp.status().is_success() || resp.status().is_client_error());
+    let status = resp.status();
+    let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(status, &json);
 }
 
 #[actix_rt::test]
@@ -866,7 +862,9 @@ async fn test_sync_modes() {
             .to_request(),
     )
     .await;
-    assert!(issuance_resp.status().is_success() || issuance_resp.status().is_client_error());
+    let issuance_status = issuance_resp.status();
+    let issuance_json: Value = test::read_body_json(issuance_resp).await;
+    assert_status_matches_body(issuance_status, &issuance_json);
 
     // Test SYNC_FULL mode
     let full_request = SyncRequest {
@@ -883,7 +881,9 @@ async fn test_sync_modes() {
             .to_request(),
     )
     .await;
-    assert!(full_resp.status().is_success() || full_resp.status().is_client_error());
+    let full_status = full_resp.status();
+    let full_json: Value = test::read_body_json(full_resp).await;
+    assert_status_matches_body(full_status, &full_json);
 }
 
 #[actix_rt::test]

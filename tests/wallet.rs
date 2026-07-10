@@ -675,8 +675,9 @@ async fn test_import_assets_from_backup() {
     )
     .await;
 
+    // tapd encodes protobuf `bytes` fields as hex, not base64.
     let request = ImportBackupRequest {
-        backup: base64::engine::general_purpose::STANDARD.encode(b"invalid backup"),
+        backup: hex::encode(b"invalid backup"),
     };
 
     let req = test::TestRequest::post()
