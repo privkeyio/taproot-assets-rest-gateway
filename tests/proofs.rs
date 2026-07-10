@@ -1,5 +1,4 @@
 use actix_web::{test, App};
-use base64::{engine::general_purpose, Engine as _};
 use serde_json::{json, Value};
 use serial_test::serial;
 use std::time::Duration;
@@ -7,8 +6,57 @@ use taproot_assets_rest_gateway::api::proofs::{
     DecodeProofRequest, ExportProofRequest, UnpackFileRequest, VerifyProofRequest,
 };
 use taproot_assets_rest_gateway::api::routes::configure;
-use taproot_assets_rest_gateway::tests::setup::{mint_test_asset, setup};
+use taproot_assets_rest_gateway::tests::setup::{
+    assert_status_matches_body, mint_test_asset, setup, txid_to_internal_hex,
+};
 use tokio::time::sleep;
+
+/// Exports a real proof file for the first asset the daemon holds, returning the
+/// hex-encoded proof and the asset's genesis point.
+async fn export_real_proof(
+    client: &reqwest::Client,
+    base_url: &str,
+    macaroon_hex: &str,
+) -> Option<(String, String)> {
+    let assets: Value = client
+        .get(format!("{base_url}/v1/taproot-assets/assets"))
+        .header("Grpc-Metadata-macaroon", macaroon_hex)
+        .send()
+        .await
+        .ok()?
+        .json()
+        .await
+        .ok()?;
+    let asset = assets["assets"].as_array()?.first()?;
+    let genesis_point = asset["asset_genesis"]["genesis_point"]
+        .as_str()?
+        .to_string();
+    let outpoint = asset["chain_anchor"]["anchor_outpoint"].as_str()?;
+    let (txid, vout) = outpoint.split_once(':')?;
+
+    let body = json!({
+        "asset_id": asset["asset_genesis"]["asset_id"].as_str()?,
+        "script_key": asset["script_key"].as_str()?,
+        "outpoint": {
+            "txid": txid_to_internal_hex(txid),
+            "output_index": vout.parse::<u32>().ok()?
+        }
+    });
+    let exported: Value = client
+        .post(format!("{base_url}/v1/taproot-assets/proofs/export"))
+        .header("Grpc-Metadata-macaroon", macaroon_hex)
+        .json(&body)
+        .send()
+        .await
+        .ok()?
+        .json()
+        .await
+        .ok()?;
+    Some((
+        exported["raw_proof_file"].as_str()?.to_string(),
+        genesis_point,
+    ))
+}
 
 async fn wait_for_asset(
     client: &reqwest::Client,
@@ -74,14 +122,14 @@ async fn test_export_proof() {
         if parts.len() == 2 {
             let txid_hex = parts[0];
             if let Ok(vout) = parts[1].parse::<u32>() {
-                if let Ok(txid_bytes) = hex::decode(txid_hex) {
-                    let txid_base64 = general_purpose::STANDARD.encode(&txid_bytes);
+                if hex::decode(txid_hex).is_ok() {
+                    let txid_hex = txid_to_internal_hex(txid_hex);
                     if let Some(script_key) = asset["script_key"].as_str() {
                         let request = ExportProofRequest {
                             asset_id: asset_id.clone(),
                             script_key: script_key.to_string(),
                             outpoint: json!({
-                                "txid": txid_base64,
+                                "txid": txid_hex,
                                 "output_index": vout
                             }),
                         };
@@ -144,8 +192,12 @@ async fn test_decode_proof() {
     )
     .await;
 
+    let (proof, _) = export_real_proof(&client, &base_url.0, &macaroon_hex.0)
+        .await
+        .expect("daemon should hold a mintable asset with an exportable proof");
+
     let request = json!({
-        "raw_proof": general_purpose::STANDARD.encode("dummy_proof_data"),
+        "raw_proof": proof,
         "proof_at_depth": 0,
         "with_prev_witnesses": true,
         "with_meta_reveal": true
@@ -156,7 +208,14 @@ async fn test_decode_proof() {
         .set_json(&request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success() || resp.status().is_client_error());
+    let status = resp.status();
+    let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(status, &json);
+    assert!(
+        status.is_success(),
+        "decoding a real proof must succeed: {json}"
+    );
+    assert!(json["decoded_proof"].is_object());
 }
 
 #[actix_rt::test]
@@ -172,9 +231,13 @@ async fn test_verify_proof() {
     )
     .await;
 
+    let (proof, genesis_point) = export_real_proof(&client, &base_url.0, &macaroon_hex.0)
+        .await
+        .expect("daemon should hold a mintable asset with an exportable proof");
+
     let request = json!({
-        "raw_proof_file": general_purpose::STANDARD.encode("dummy_proof_file_data"),
-        "genesis_point": "0000000000000000000000000000000000000000000000000000000000000000:0"
+        "raw_proof_file": proof,
+        "genesis_point": genesis_point
     });
 
     let req = test::TestRequest::post()
@@ -182,7 +245,14 @@ async fn test_verify_proof() {
         .set_json(&request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success() || resp.status().is_client_error());
+    let status = resp.status();
+    let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(status, &json);
+    assert!(
+        status.is_success(),
+        "verifying a real proof must succeed: {json}"
+    );
+    assert_eq!(json["valid"].as_bool(), Some(true));
 }
 
 #[actix_rt::test]
@@ -197,6 +267,10 @@ async fn test_decode_proof_options() {
     )
     .await;
 
+    let (proof, _) = export_real_proof(&client, &base_url.0, &macaroon_hex.0)
+        .await
+        .expect("daemon should hold a mintable asset with an exportable proof");
+
     let test_cases = vec![
         (Some(0), true, true),
         (Some(1), false, false),
@@ -205,7 +279,7 @@ async fn test_decode_proof_options() {
 
     for (depth, with_witnesses, with_meta) in test_cases {
         let request = json!({
-            "raw_proof": general_purpose::STANDARD.encode("dummy_proof_data"),
+            "raw_proof": proof,
             "proof_at_depth": depth,
             "with_prev_witnesses": with_witnesses,
             "with_meta_reveal": with_meta
@@ -216,7 +290,14 @@ async fn test_decode_proof_options() {
             .set_json(&request)
             .to_request();
         let resp = test::call_service(&app, req).await;
-        assert!(resp.status().is_success() || resp.status().is_client_error());
+        let status = resp.status();
+        let json: Value = test::read_body_json(resp).await;
+        assert_status_matches_body(status, &json);
+        assert!(
+            status.is_success(),
+            "decoding a real proof at depth {depth:?} must succeed: {json}"
+        );
+        assert!(json["decoded_proof"].is_object());
     }
 }
 
@@ -234,7 +315,7 @@ async fn test_proof_validation_errors() {
     .await;
 
     let request = json!({
-        "raw_proof": general_purpose::STANDARD.encode(""),
+        "raw_proof": hex::encode(""),
         "proof_at_depth": 0,
         "with_prev_witnesses": true,
         "with_meta_reveal": true
@@ -245,12 +326,10 @@ async fn test_proof_validation_errors() {
         .set_json(&request)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    if resp.status().is_success() {
-        let json: Value = test::read_body_json(resp).await;
-        assert!(json.get("error").is_some() || json.get("code").is_some());
-    } else {
-        assert!(resp.status().is_client_error());
-    }
+    let status = resp.status();
+    let json: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(status, &json);
+    assert!(!status.is_success(), "an empty proof must be rejected");
 }
 
 #[actix_rt::test]
@@ -326,14 +405,14 @@ async fn test_export_asset_proof() {
         if parts.len() == 2 {
             let txid_hex = parts[0];
             if let Ok(vout) = parts[1].parse::<u32>() {
-                if let Ok(txid_bytes) = hex::decode(txid_hex) {
-                    let txid_base64 = general_purpose::STANDARD.encode(&txid_bytes);
+                if hex::decode(txid_hex).is_ok() {
+                    let txid_hex = txid_to_internal_hex(txid_hex);
                     if let Some(script_key) = asset["script_key"].as_str() {
                         let request = ExportProofRequest {
                             asset_id: asset_id.clone(),
                             script_key: script_key.to_string(),
                             outpoint: json!({
-                                "txid": txid_base64,
+                                "txid": txid_hex,
                                 "output_index": vout
                             }),
                         };
@@ -408,14 +487,14 @@ async fn test_unpack_exported_proof_file() {
         if parts.len() == 2 {
             let txid_hex = parts[0];
             if let Ok(vout) = parts[1].parse::<u32>() {
-                if let Ok(txid_bytes) = hex::decode(txid_hex) {
-                    let txid_base64 = general_purpose::STANDARD.encode(&txid_bytes);
+                if hex::decode(txid_hex).is_ok() {
+                    let txid_hex = txid_to_internal_hex(txid_hex);
                     if let Some(script_key) = asset["script_key"].as_str() {
                         let export_req = ExportProofRequest {
                             asset_id: asset_id.clone(),
                             script_key: script_key.to_string(),
                             outpoint: json!({
-                                "txid": txid_base64,
+                                "txid": txid_hex,
                                 "output_index": vout
                             }),
                         };
@@ -506,14 +585,14 @@ async fn test_decode_proof_file() {
         if parts.len() == 2 {
             let txid_hex = parts[0];
             if let Ok(vout) = parts[1].parse::<u32>() {
-                if let Ok(txid_bytes) = hex::decode(txid_hex) {
-                    let txid_base64 = general_purpose::STANDARD.encode(&txid_bytes);
+                if hex::decode(txid_hex).is_ok() {
+                    let txid_hex = txid_to_internal_hex(txid_hex);
                     if let Some(script_key) = asset["script_key"].as_str() {
                         let export_req = ExportProofRequest {
                             asset_id: asset_id.clone(),
                             script_key: script_key.to_string(),
                             outpoint: json!({
-                                "txid": txid_base64,
+                                "txid": txid_hex,
                                 "output_index": vout
                             }),
                         };
@@ -613,14 +692,14 @@ async fn test_verify_proof_validity() {
         if parts.len() == 2 {
             let txid_hex = parts[0];
             if let Ok(vout) = parts[1].parse::<u32>() {
-                if let Ok(txid_bytes) = hex::decode(txid_hex) {
-                    let txid_base64 = general_purpose::STANDARD.encode(&txid_bytes);
+                if hex::decode(txid_hex).is_ok() {
+                    let txid_hex = txid_to_internal_hex(txid_hex);
                     if let Some(script_key) = asset["script_key"].as_str() {
                         let export_req = ExportProofRequest {
                             asset_id: asset_id.clone(),
                             script_key: script_key.to_string(),
                             outpoint: json!({
-                                "txid": txid_base64,
+                                "txid": txid_hex,
                                 "output_index": vout
                             }),
                         };
@@ -713,14 +792,14 @@ async fn test_unpack_proof_file() {
         if parts.len() == 2 {
             let txid_hex = parts[0];
             if let Ok(vout) = parts[1].parse::<u32>() {
-                if let Ok(txid_bytes) = hex::decode(txid_hex) {
-                    let txid_base64 = general_purpose::STANDARD.encode(&txid_bytes);
+                if hex::decode(txid_hex).is_ok() {
+                    let txid_hex = txid_to_internal_hex(txid_hex);
                     if let Some(script_key) = asset["script_key"].as_str() {
                         let export_req = ExportProofRequest {
                             asset_id: asset_id.clone(),
                             script_key: script_key.to_string(),
                             outpoint: json!({
-                                "txid": txid_base64,
+                                "txid": txid_hex,
                                 "output_index": vout
                             }),
                         };
@@ -814,14 +893,14 @@ async fn test_decode_proof_at_different_depths() {
         if parts.len() == 2 {
             let txid_hex = parts[0];
             if let Ok(vout) = parts[1].parse::<u32>() {
-                if let Ok(txid_bytes) = hex::decode(txid_hex) {
-                    let txid_base64 = general_purpose::STANDARD.encode(&txid_bytes);
+                if hex::decode(txid_hex).is_ok() {
+                    let txid_hex = txid_to_internal_hex(txid_hex);
                     if let Some(script_key) = initial_asset["script_key"].as_str() {
                         let export_req = ExportProofRequest {
                             asset_id: asset_id.clone(),
                             script_key: script_key.to_string(),
                             outpoint: json!({
-                                "txid": txid_base64,
+                                "txid": txid_hex,
                                 "output_index": vout
                             }),
                         };

@@ -1,5 +1,4 @@
 use actix_web::{test, App};
-use base64::{engine::general_purpose, Engine as _};
 use serde_json::{json, Value};
 use serial_test::serial;
 use taproot_assets_rest_gateway::api::assets::{
@@ -138,7 +137,7 @@ async fn test_mint_with_metadata() {
             "name": asset_name,
             "amount": "10000",
             "asset_meta": {
-                "data": general_purpose::STANDARD.encode(metadata.to_string()),
+                "data": hex::encode(metadata.to_string()),
                 "type": "META_TYPE_JSON"
             }
         },

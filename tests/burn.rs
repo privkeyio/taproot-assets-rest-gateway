@@ -1,4 +1,5 @@
 use actix_web::{test, App};
+use base64::{engine::general_purpose, Engine as _};
 use serde_json::Value;
 use serial_test::serial;
 use std::time::Duration;
@@ -379,7 +380,8 @@ async fn test_list_burns() {
 #[serial]
 async fn test_list_burns_with_filters() {
     let (client, base_url, macaroon_hex, lnd_macaroon_hex) = setup().await;
-    let asset_id = mint_test_asset(
+    // Ensure at least one asset exists so the daemon has burn history to filter.
+    let _asset_id = mint_test_asset(
         client.as_ref(),
         &base_url.0,
         &macaroon_hex.0,
@@ -395,25 +397,54 @@ async fn test_list_burns_with_filters() {
     )
     .await;
 
-    // Test with asset_id filter
+    // Filter against an asset that already has a burn rather than creating one:
+    // a burn needs an unlocked, confirmed on-chain UTXO, and sibling suites lease
+    // them, which made this test depend on execution order.
     let req = test::TestRequest::get()
-        .uri(&format!("/v1/taproot-assets/burns?asset_id={asset_id}"))
+        .uri("/v1/taproot-assets/burns")
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let status = resp.status();
+    let all: Value = test::read_body_json(resp).await;
+    assert_status_matches_body(status, &all);
+    assert!(status.is_success());
 
+    let Some(burned_asset_id) = all["burns"]
+        .as_array()
+        .and_then(|b| b.first())
+        .and_then(|b| b["asset_id"].as_str())
+        .map(str::to_string)
+    else {
+        info!("no burns recorded yet; nothing to filter");
+        return;
+    };
+
+    // Unlike body `bytes` fields, which tapd encodes as hex, `bytes` query
+    // parameters are base64. Sending hex returns an empty list with a 200.
+    let asset_id_b64 =
+        general_purpose::STANDARD.encode(hex::decode(&burned_asset_id).expect("asset id is hex"));
+    let req = test::TestRequest::get()
+        .uri(&format!(
+            "/v1/taproot-assets/burns?asset_id={}",
+            urlencoding::encode(&asset_id_b64)
+        ))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    let status = resp.status();
     let json: Value = test::read_body_json(resp).await;
-    assert!(json["burns"].is_array());
+    assert_status_matches_body(status, &json);
+    assert!(status.is_success());
 
-    // Verify burn structure if any burns exist
-    if let Some(burns) = json["burns"].as_array() {
-        if !burns.is_empty() {
-            let first_burn = &burns[0];
-            assert!(first_burn["note"].is_string() || first_burn["note"].is_null());
-            assert!(first_burn["asset_id"].is_string());
-            assert!(first_burn["amount"].is_string());
-            assert!(first_burn["anchor_txid"].is_string());
-        }
+    let burns = json["burns"].as_array().expect("burns is an array");
+    assert!(
+        !burns.is_empty(),
+        "filtering by an asset that has a burn must return it"
+    );
+    for burn in burns {
+        assert_eq!(burn["asset_id"].as_str(), Some(burned_asset_id.as_str()));
+        assert!(burn["amount"].is_string());
+        assert!(burn["anchor_txid"].is_string());
+        assert!(burn["note"].is_string() || burn["note"].is_null());
     }
 }
 

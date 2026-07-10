@@ -1,5 +1,4 @@
 use actix_web::{test, App};
-use base64::Engine;
 use serde_json::{json, Value};
 use serial_test::serial;
 use taproot_assets_rest_gateway::api::routes::configure;
@@ -8,7 +7,7 @@ use taproot_assets_rest_gateway::api::wallet::{
     OwnershipVerifyRequest, ScriptKeyRequest, UtxoLeaseDeleteRequest,
 };
 use taproot_assets_rest_gateway::tests::setup::{
-    assert_status_matches_body, mint_test_asset, setup, setup_without_assets,
+    assert_status_matches_body, mint_test_asset, setup, setup_without_assets, txid_to_internal_hex,
 };
 
 #[actix_rt::test]
@@ -268,17 +267,17 @@ async fn test_prove_asset_ownership() {
 
         if parts.len() == 2 {
             let txid_hex = parts[0];
-            if let Ok(txid_bytes) = hex::decode(txid_hex) {
-                let txid_base64 = base64::engine::general_purpose::STANDARD.encode(&txid_bytes);
+            if hex::decode(txid_hex).is_ok() {
+                let txid_hex = txid_to_internal_hex(txid_hex);
 
                 let request = OwnershipProveRequest {
                     asset_id: asset_id.clone(),
                     script_key: script_key.to_string(),
                     outpoint: json!({
-                        "txid": txid_base64,
+                        "txid": txid_hex,
                         "output_index": parts[1].parse::<u32>().unwrap_or(0)
                     }),
-                    challenge: base64::engine::general_purpose::STANDARD.encode("test_challenge"),
+                    challenge: hex::encode("test_challenge"),
                 };
 
                 let req = test::TestRequest::post()
@@ -348,16 +347,16 @@ async fn test_verify_ownership_proof() {
 
         if parts.len() == 2 {
             let txid_hex = parts[0];
-            if let Ok(txid_bytes) = hex::decode(txid_hex) {
-                let txid_base64 = base64::engine::general_purpose::STANDARD.encode(&txid_bytes);
-                let challenge = base64::engine::general_purpose::STANDARD.encode("test_challenge");
+            if hex::decode(txid_hex).is_ok() {
+                let txid_hex = txid_to_internal_hex(txid_hex);
+                let challenge = hex::encode("test_challenge");
 
                 // First prove ownership
                 let prove_request = OwnershipProveRequest {
                     asset_id: asset_id.clone(),
                     script_key: script_key.to_string(),
                     outpoint: json!({
-                        "txid": txid_base64,
+                        "txid": txid_hex,
                         "output_index": parts[1].parse::<u32>().unwrap_or(0)
                     }),
                     challenge: challenge.clone(),
@@ -424,7 +423,7 @@ async fn test_delete_utxo_lease() {
 
     let request = UtxoLeaseDeleteRequest {
         outpoint: json!({
-            "txid": base64::engine::general_purpose::STANDARD.encode(vec![0u8; 32]),
+            "txid": hex::encode(vec![0u8; 32]),
             "output_index": 0
         }),
     };
@@ -574,17 +573,17 @@ async fn test_ownership_proof_with_invalid_challenge() {
 
         if parts.len() == 2 {
             let txid_hex = parts[0];
-            if let Ok(txid_bytes) = hex::decode(txid_hex) {
-                let txid_base64 = base64::engine::general_purpose::STANDARD.encode(&txid_bytes);
-                let challenge1 = base64::engine::general_purpose::STANDARD.encode("challenge1");
-                let challenge2 = base64::engine::general_purpose::STANDARD.encode("challenge2");
+            if hex::decode(txid_hex).is_ok() {
+                let txid_hex = txid_to_internal_hex(txid_hex);
+                let challenge1 = hex::encode("challenge1");
+                let challenge2 = hex::encode("challenge2");
 
                 // Prove with one challenge
                 let prove_request = OwnershipProveRequest {
                     asset_id: asset_id.clone(),
                     script_key: script_key.to_string(),
                     outpoint: json!({
-                        "txid": txid_base64,
+                        "txid": txid_hex,
                         "output_index": parts[1].parse::<u32>().unwrap_or(0)
                     }),
                     challenge: challenge1,
