@@ -1,7 +1,7 @@
 use super::{handle_result, parse_upstream, validate_asset_id, validate_group_key};
 use crate::error::AppError;
 use crate::types::{BaseUrl, MacaroonHex};
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument};
@@ -67,9 +67,14 @@ pub async fn list_burns(
     client: &Client,
     base_url: &str,
     macaroon_hex: &str,
+    query: &str,
 ) -> Result<serde_json::Value, AppError> {
     info!("Listing burns");
-    let url = format!("{base_url}/v1/taproot-assets/burns");
+    let mut url = format!("{base_url}/v1/taproot-assets/burns");
+    if !query.is_empty() {
+        url.push('?');
+        url.push_str(query);
+    }
     let response = client
         .get(&url)
         .header("Grpc-Metadata-macaroon", macaroon_hex)
@@ -97,11 +102,20 @@ async fn burn(
 }
 
 async fn list(
+    req: HttpRequest,
     client: web::Data<Client>,
     base_url: web::Data<BaseUrl>,
     macaroon_hex: web::Data<MacaroonHex>,
 ) -> HttpResponse {
-    handle_result(list_burns(client.as_ref(), &base_url.0, &macaroon_hex.0).await)
+    handle_result(
+        list_burns(
+            client.as_ref(),
+            &base_url.0,
+            &macaroon_hex.0,
+            req.query_string(),
+        )
+        .await,
+    )
 }
 
 pub fn configure(cfg: &mut web::ServiceConfig) {

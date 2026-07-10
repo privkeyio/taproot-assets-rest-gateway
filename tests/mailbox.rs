@@ -1,5 +1,4 @@
 use actix_web::{test, web, App};
-use base64::{engine::general_purpose, Engine as _};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use std::time::Duration;
@@ -55,9 +54,9 @@ async fn test_send_message_basic() {
     )
     .await;
     info!("Testing basic message send");
-    let receiver_id = general_purpose::STANDARD.encode(vec![0x02; 33]);
+    let receiver_id = hex::encode(vec![0x02; 33]);
     let test_message = "Hello, Taproot Assets Mailbox!";
-    let encrypted_payload = general_purpose::STANDARD.encode(test_message.as_bytes());
+    let encrypted_payload = hex::encode(test_message.as_bytes());
     let request = json!({
         "receiver_id": receiver_id,
         "encrypted_payload": encrypted_payload,
@@ -90,7 +89,7 @@ async fn test_receive_messages_flow() {
     )
     .await;
     info!("Testing receive messages flow");
-    let receiver_id = general_purpose::STANDARD.encode(vec![0x02; 33]);
+    let receiver_id = hex::encode(vec![0x02; 33]);
     let init_request = json!({
         "init": {
             "receiver_id": receiver_id,
@@ -114,7 +113,7 @@ async fn test_receive_messages_flow() {
         assert!(challenge["challenge_hash"].is_string());
         let auth_request = json!({
             "auth_sig": {
-                "signature": general_purpose::STANDARD.encode(vec![0u8; 64])
+                "signature": hex::encode(vec![0u8; 64])
             }
         });
         let auth_req = test::TestRequest::post()
@@ -178,8 +177,8 @@ async fn test_mailbox_expiry_handling() {
     .await;
     info!("Testing mailbox message expiry handling");
     let expired_request = json!({
-        "receiver_id": general_purpose::STANDARD.encode(vec![0x02; 33]),
-        "encrypted_payload": general_purpose::STANDARD.encode(b"expired message"),
+        "receiver_id": hex::encode(vec![0x02; 33]),
+        "encrypted_payload": hex::encode(b"expired message"),
         "expiry_block_height": 1
     });
     let req = test::TestRequest::post()
@@ -200,14 +199,16 @@ async fn test_large_message_payload() {
             .app_data(client.clone())
             .app_data(base_url.clone())
             .app_data(macaroon_hex.clone())
+            .app_data(web::JsonConfig::default().limit(10 * 1024 * 1024))
             .configure(configure),
     )
     .await;
     info!("Testing large message payload");
+    // hex doubles the encoded size, so the test app needs production's JSON limit
     let large_payload = vec![0x42u8; 1024 * 1024];
-    let encoded_payload = general_purpose::STANDARD.encode(&large_payload);
+    let encoded_payload = hex::encode(&large_payload);
     let request = json!({
-        "receiver_id": general_purpose::STANDARD.encode(vec![0x02; 33]),
+        "receiver_id": hex::encode(vec![0x02; 33]),
         "encrypted_payload": encoded_payload,
         "expiry_block_height": 200000
     });

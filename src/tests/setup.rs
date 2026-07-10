@@ -759,3 +759,12 @@ pub fn assert_status_matches_body(status: actix_web::http::StatusCode, body: &Va
         "status {status} disagrees with body {body}"
     );
 }
+
+/// Bitcoin txids are displayed big-endian but travel over the wire as
+/// little-endian bytes, so a txid taken from a display string must be reversed
+/// before it is hex-encoded into a protobuf `bytes` field.
+pub fn txid_to_internal_hex(display_txid: &str) -> String {
+    let mut bytes = hex::decode(display_txid).unwrap_or_default();
+    bytes.reverse();
+    hex::encode(bytes)
+}

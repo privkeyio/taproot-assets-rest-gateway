@@ -1,5 +1,4 @@
 use actix_web::{test, App};
-use base64::{engine::general_purpose, Engine as _};
 use serde_json::{json, Value};
 use serial_test::serial;
 use taproot_assets_rest_gateway::api::addresses::NewAddrRequest;
@@ -7,7 +6,9 @@ use taproot_assets_rest_gateway::api::assets::TransferRegisterRequest;
 use taproot_assets_rest_gateway::api::proofs::ExportProofRequest;
 use taproot_assets_rest_gateway::api::routes::configure;
 use taproot_assets_rest_gateway::api::send::SendRequest;
-use taproot_assets_rest_gateway::tests::setup::{mint_test_asset, setup, setup_without_assets};
+use taproot_assets_rest_gateway::tests::setup::{
+    assert_status_matches_body, mint_test_asset, setup, setup_without_assets,
+};
 
 #[actix_rt::test]
 #[serial]
@@ -168,7 +169,7 @@ async fn test_register_transfer() {
             group_key: None,
             script_key: script_key.to_string(),
             outpoint: json!({
-                "txid": general_purpose::STANDARD.encode(vec![0u8; 32]),
+                "txid": hex::encode(vec![0u8; 32]),
                 "output_index": 0
             }),
         };
@@ -178,12 +179,11 @@ async fn test_register_transfer() {
             .set_json(&request)
             .to_request();
         let resp = test::call_service(&app, req).await;
+        let status = resp.status();
+        let register_json: Value = test::read_body_json(resp).await;
+        assert_status_matches_body(status, &register_json);
 
-        // May fail if outpoint doesn't exist, but API structure should be correct
-        assert!(resp.status().is_success() || resp.status().is_client_error());
-
-        if resp.status().is_success() {
-            let register_json: Value = test::read_body_json(resp).await;
+        if status.is_success() {
             assert!(register_json["registered_asset"].is_object());
         }
     }
@@ -241,7 +241,7 @@ async fn test_export_and_verify_transfer_proof() {
             asset_id: asset_id.clone(),
             script_key: script_key.to_string(),
             outpoint: json!({
-                "txid": general_purpose::STANDARD.encode(vec![0u8; 32]),
+                "txid": hex::encode(vec![0u8; 32]),
                 "output_index": 0
             }),
         };

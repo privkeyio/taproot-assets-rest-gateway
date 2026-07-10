@@ -1,5 +1,4 @@
 use actix_web::{test, App};
-use base64::Engine;
 use serde_json::{json, Value};
 use serial_test::serial;
 use std::time::Instant;
@@ -163,7 +162,7 @@ async fn test_large_proof_handling_performance() {
     )
     .await;
 
-    let large_proof = base64::engine::general_purpose::STANDARD.encode(vec![0u8; 1024 * 1024]);
+    let large_proof = hex::encode(vec![0u8; 1024 * 1024]);
     let req = json!({
         "raw_proof": large_proof,
         "proof_at_depth": 0,

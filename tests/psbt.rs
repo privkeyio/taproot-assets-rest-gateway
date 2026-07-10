@@ -1,5 +1,4 @@
 use actix_web::{test, App};
-use base64::{engine::general_purpose, Engine as _};
 use serde_json::{json, Value};
 use serial_test::serial;
 use taproot_assets_rest_gateway::api::routes::configure;
@@ -8,7 +7,7 @@ use taproot_assets_rest_gateway::api::wallet::{
     VirtualPsbtLogTransferRequest, VirtualPsbtSignRequest,
 };
 use taproot_assets_rest_gateway::tests::setup::{
-    assert_status_matches_body, mint_test_asset, setup,
+    assert_status_matches_body, mint_test_asset, setup, txid_to_internal_hex,
 };
 
 #[actix_rt::test]
@@ -351,7 +350,7 @@ async fn test_commit_virtual_psbt() {
             let commit_request = VirtualPsbtCommitRequest {
                 virtual_psbts: vec![signed_psbt.to_string()],
                 passive_asset_psbts: passive_psbts,
-                anchor_psbt: general_purpose::STANDARD.encode(vec![0u8; 100]), // Dummy anchor PSBT
+                anchor_psbt: hex::encode(vec![0u8; 100]), // Dummy anchor PSBT
                 existing_output_index: -1,
                 add: true,
                 target_conf: 6,
@@ -406,8 +405,8 @@ async fn test_log_psbt_transfer() {
 
     // Test with dummy data since we need properly committed PSBTs
     let request = VirtualPsbtLogTransferRequest {
-        anchor_psbt: general_purpose::STANDARD.encode(vec![0u8; 100]),
-        virtual_psbts: vec![general_purpose::STANDARD.encode(vec![1u8; 100])],
+        anchor_psbt: hex::encode(vec![0u8; 100]),
+        virtual_psbts: vec![hex::encode(vec![1u8; 100])],
         passive_asset_psbts: vec![],
         change_output_index: -1,
         lnd_locked_utxos: vec![],
@@ -567,7 +566,7 @@ async fn test_psbt_with_specific_inputs() {
                             raw: json!({
                                 "inputs": [{
                                     "outpoint": {
-                                        "txid": general_purpose::STANDARD.encode(hex::decode(parts[0]).unwrap_or_default()),
+                                        "txid": txid_to_internal_hex(parts[0]),
                                         "output_index": parts[1].parse::<u32>().unwrap_or(0)
                                     },
                                     "id": asset_id,
@@ -647,14 +646,14 @@ async fn test_commit_psbt_with_custom_parameters() {
 
     // Test with custom lock parameters
     let commit_request = VirtualPsbtCommitRequest {
-        virtual_psbts: vec![general_purpose::STANDARD.encode(vec![1u8; 100])],
+        virtual_psbts: vec![hex::encode(vec![1u8; 100])],
         passive_asset_psbts: vec![],
-        anchor_psbt: general_purpose::STANDARD.encode(vec![0u8; 100]),
+        anchor_psbt: hex::encode(vec![0u8; 100]),
         existing_output_index: -1,
         add: true,
         target_conf: 1,
         sat_per_vbyte: "50".to_string(),
-        custom_lock_id: Some(general_purpose::STANDARD.encode(b"custom_lock_123")),
+        custom_lock_id: Some(hex::encode(b"custom_lock_123")),
         lock_expiration_seconds: Some("300".to_string()),
         skip_funding: true,
     };
@@ -694,9 +693,9 @@ async fn test_anchor_multiple_virtual_psbts() {
     // Test anchoring multiple PSBTs
     let anchor_request = VirtualPsbtAnchorRequest {
         virtual_psbts: vec![
-            general_purpose::STANDARD.encode(vec![1u8; 100]),
-            general_purpose::STANDARD.encode(vec![2u8; 100]),
-            general_purpose::STANDARD.encode(vec![3u8; 100]),
+            hex::encode(vec![1u8; 100]),
+            hex::encode(vec![2u8; 100]),
+            hex::encode(vec![3u8; 100]),
         ],
     };
 
@@ -741,12 +740,12 @@ async fn test_log_transfer_with_label() {
 
     for label in labels {
         let request = VirtualPsbtLogTransferRequest {
-            anchor_psbt: general_purpose::STANDARD.encode(vec![0u8; 100]),
-            virtual_psbts: vec![general_purpose::STANDARD.encode(vec![1u8; 100])],
+            anchor_psbt: hex::encode(vec![0u8; 100]),
+            virtual_psbts: vec![hex::encode(vec![1u8; 100])],
             passive_asset_psbts: vec![],
             change_output_index: 0,
             lnd_locked_utxos: vec![json!({
-                "txid": general_purpose::STANDARD.encode(vec![0u8; 32]),
+                "txid": hex::encode(vec![0u8; 32]),
                 "output_index": 0
             })],
             skip_anchor_tx_broadcast: true,
