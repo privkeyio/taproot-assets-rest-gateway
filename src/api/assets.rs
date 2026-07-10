@@ -163,7 +163,7 @@ pub async fn list_assets(
         .await
         .map_err(AppError::RequestError)?;
 
-    let asset_response: AssetResponse = response.json().await.map_err(AppError::RequestError)?;
+    let asset_response: AssetResponse = parse_upstream(response).await?;
 
     Ok(asset_response.into_assets())
 }
