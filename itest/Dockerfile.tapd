@@ -1,0 +1,14 @@
+# Builds tapd at a pinned tag and drops the binaries into Polar's tapd image so
+# the entrypoint, user, and volume layout match the other Polar images.
+ARG TAP_VERSION=v0.8.0
+FROM golang:1.26 AS builder
+ARG TAP_VERSION
+RUN git clone --depth 1 --branch ${TAP_VERSION} \
+      https://github.com/lightninglabs/taproot-assets /src
+WORKDIR /src
+RUN CGO_ENABLED=0 go build -trimpath -o /out/tapd  ./cmd/tapd \
+ && CGO_ENABLED=0 go build -trimpath -o /out/tapcli ./cmd/tapcli
+
+FROM polarlightning/tapd:0.7.0-alpha
+COPY --from=builder /out/tapd  /opt/taproot-assets/tapd
+COPY --from=builder /out/tapcli /opt/taproot-assets/tapcli

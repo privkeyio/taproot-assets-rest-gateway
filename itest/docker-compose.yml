@@ -1,0 +1,76 @@
+name: tapgw-itest
+
+services:
+  bitcoind:
+    image: polarlightning/bitcoind:30.0
+    command: >-
+      bitcoind -server=1 -regtest=1
+      -rpcuser=polaruser -rpcpassword=polarpass
+      -rpcbind=0.0.0.0 -rpcallowip=0.0.0.0/0 -rpcport=18443
+      -zmqpubrawblock=tcp://0.0.0.0:28334
+      -zmqpubrawtx=tcp://0.0.0.0:28335
+      -txindex=1 -dnsseed=0 -rest -listen=1 -listenonion=0
+      -fallbackfee=0.0002
+    ports:
+      - "${BITCOIND_HOST_PORT:-18443}:18443"
+    healthcheck:
+      test: ["CMD", "bitcoin-cli", "-regtest", "-rpcuser=polaruser", "-rpcpassword=polarpass", "getblockchaininfo"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+
+  lnd:
+    image: polarlightning/lnd:0.20.0-beta
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    command: >-
+      lnd --noseedbackup --trickledelay=5000 --alias=itest
+      --tlsextradomain=lnd
+      --listen=0.0.0.0:9735 --rpclisten=0.0.0.0:10009 --restlisten=0.0.0.0:8080
+      --bitcoin.active --bitcoin.regtest --bitcoin.node=bitcoind
+      --bitcoind.rpchost=bitcoind
+      --bitcoind.rpcuser=polaruser --bitcoind.rpcpass=polarpass
+      --bitcoind.zmqpubrawblock=tcp://bitcoind:28334
+      --bitcoind.zmqpubrawtx=tcp://bitcoind:28335
+    ports:
+      - "${LND_HOST_PORT:-8081}:8080"
+    volumes:
+      - lnd-data:/home/lnd/.lnd
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /home/lnd/.lnd/data/chain/bitcoin/regtest/admin.macaroon"]
+      interval: 3s
+      timeout: 5s
+      retries: 60
+
+  tapd:
+    build:
+      context: .
+      dockerfile: Dockerfile.tapd
+    image: tapgw-itest-tapd:0.8.0
+    depends_on:
+      lnd:
+        condition: service_healthy
+    command: >-
+      tapd --network=regtest
+      --tlsextradomain=tapd
+      --rpclisten=0.0.0.0:10029 --restlisten=0.0.0.0:8089
+      --lnd.host=lnd:10009
+      --lnd.macaroonpath=/lnd/data/chain/bitcoin/regtest/admin.macaroon
+      --lnd.tlspath=/lnd/tls.cert
+      --allow-public-uni-proof-courier
+      --universe.public-access=rw
+    ports:
+      - "${TAPD_HOST_PORT:-8289}:8089"
+    volumes:
+      - lnd-data:/lnd:ro
+      - tapd-data:/home/tap/.tapd
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /home/tap/.tapd/data/regtest/admin.macaroon"]
+      interval: 3s
+      timeout: 5s
+      retries: 60
+
+volumes:
+  lnd-data:
+  tapd-data:
