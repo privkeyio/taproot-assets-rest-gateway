@@ -534,71 +534,68 @@ async fn test_psbt_with_specific_inputs() {
     .await;
     let utxos_json: Value = test::read_body_json(utxos_resp).await;
 
-    if let Some(managed_utxos) = utxos_json["managed_utxos"].as_object() {
-        if let Some((_, utxo_data)) = managed_utxos.iter().next() {
-            if let Some(assets) = utxo_data["assets"].as_array() {
-                if let Some(asset) = assets
-                    .iter()
-                    .find(|a| a["asset_genesis"]["asset_id"].as_str() == Some(&asset_id))
-                {
-                    let outpoint = utxo_data["outpoint"].as_str().unwrap();
-                    let parts: Vec<&str> = outpoint.split(':').collect();
-                    if parts.len() == 2 {
-                        let script_key = asset["script_key"].as_str().unwrap();
+    // Find any managed UTXO that holds this asset and exposes the fields we need.
+    // Missing fields or no matching UTXO means there is nothing to exercise, so
+    // skip rather than panic on an unwrap.
+    let suitable = utxos_json["managed_utxos"].as_object().and_then(|utxos| {
+        utxos.values().find_map(|utxo_data| {
+            let outpoint = utxo_data["outpoint"].as_str()?;
+            let asset = utxo_data["assets"]
+                .as_array()?
+                .iter()
+                .find(|a| a["asset_genesis"]["asset_id"].as_str() == Some(&asset_id))?;
+            let script_key = asset["script_key"].as_str()?;
+            let (txid, vout) = outpoint.split_once(':')?;
+            Some((
+                txid.to_string(),
+                vout.parse::<u32>().ok()?,
+                script_key.to_string(),
+            ))
+        })
+    });
 
-                        let addr_resp = test::call_service(
-                            &app,
-                            test::TestRequest::post()
-                                .uri("/v1/taproot-assets/addrs")
-                                .set_json(json!({
-                                    "asset_id": asset_id,
-                                    "amt": "10"
-                                }))
-                                .to_request(),
-                        )
-                        .await;
-                        let addr_json: Value = test::read_body_json(addr_resp).await;
-                        let tap_addr = addr_json["encoded"].as_str().unwrap();
+    if let Some((txid, vout, script_key)) = suitable {
+        let addr_resp = test::call_service(
+            &app,
+            test::TestRequest::post()
+                .uri("/v1/taproot-assets/addrs")
+                .set_json(json!({
+                    "asset_id": asset_id,
+                    "amt": "10"
+                }))
+                .to_request(),
+        )
+        .await;
+        let addr_json: Value = test::read_body_json(addr_resp).await;
 
-                        // Try to use specific input
-                        let request = VirtualPsbtFundRequest {
-                            psbt: "".to_string(),
-                            raw: json!({
-                                "inputs": [{
-                                    "outpoint": {
-                                        "txid": txid_to_internal_hex(parts[0]),
-                                        "output_index": parts[1].parse::<u32>().unwrap_or(0)
-                                    },
-                                    "id": asset_id,
-                                    "script_key": script_key
-                                }],
-                                "recipients": {
-                                    tap_addr: 10
-                                }
-                            }),
-                            coin_select_type: "COIN_SELECT_DEFAULT".to_string(),
-                        };
-
-                        let req = test::TestRequest::post()
-                            .uri("/v1/taproot-assets/wallet/virtual-psbt/fund")
-                            .set_json(&request)
-                            .to_request();
-                        let resp = test::call_service(&app, req).await;
-                        let resp_status = resp.status();
-
-                        let json: Value = test::read_body_json(resp).await;
-                        assert_status_matches_body(resp_status, &json);
-                        println!(
-                            "Fund with specific input result: {}",
-                            if json.get("error").is_some() {
-                                "error"
-                            } else {
-                                "success"
-                            }
-                        );
+        if let Some(tap_addr) = addr_json["encoded"].as_str() {
+            let request = VirtualPsbtFundRequest {
+                psbt: "".to_string(),
+                raw: json!({
+                    "inputs": [{
+                        "outpoint": {
+                            "txid": txid_to_internal_hex(&txid),
+                            "output_index": vout
+                        },
+                        "id": asset_id,
+                        "script_key": script_key
+                    }],
+                    "recipients": {
+                        tap_addr: 10
                     }
-                }
-            }
+                }),
+                coin_select_type: "COIN_SELECT_DEFAULT".to_string(),
+            };
+
+            let req = test::TestRequest::post()
+                .uri("/v1/taproot-assets/wallet/virtual-psbt/fund")
+                .set_json(&request)
+                .to_request();
+            let resp = test::call_service(&app, req).await;
+            let resp_status = resp.status();
+
+            let json: Value = test::read_body_json(resp).await;
+            assert_status_matches_body(resp_status, &json);
         }
     }
 }

@@ -1,10 +1,8 @@
 name: Integration
 
 # The integration suite needs a live bitcoind + lnd + tapd stack, so it is not
-# part of the per-PR checks. It runs nightly and can be triggered by hand.
+# part of the per-PR checks. Trigger it by hand from the Actions tab.
 on:
-  schedule:
-    - cron: "0 6 * * *"
   workflow_dispatch:
 
 env:
